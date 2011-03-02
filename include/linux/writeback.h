@@ -86,6 +86,8 @@ static inline void laptop_sync_completion(void) { }
 #endif
 void throttle_vm_writeout(gfp_t gfp_mask);
 
+extern unsigned long global_dirty_limit;
+
 /* These are exported to sysctl. */
 extern int dirty_background_ratio;
 extern unsigned long dirty_background_bytes;
@@ -121,6 +123,10 @@ unsigned long bdi_dirty_limit(struct backing_dev_info *bdi,
 			       unsigned long dirty);
 
 void __bdi_update_bandwidth(struct backing_dev_info *bdi,
+			    unsigned long thresh,
+			    unsigned long dirty,
+			    unsigned long bdi_thresh,
+			    unsigned long bdi_dirty,
 			    unsigned long start_time);
 
 void page_writeback_init(void);
