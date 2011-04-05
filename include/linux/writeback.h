@@ -7,6 +7,8 @@
 #include <linux/sched.h>
 #include <linux/fs.h>
 
+DECLARE_PER_CPU(int, dirty_throttle_leaks);
+
 /*
  * Further beyond, all dirtier tasks will enter a loop waiting (possibly long
  * time) for the dirty pages to drop, unless written enough pages.
