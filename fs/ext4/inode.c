@@ -1105,8 +1105,7 @@ qsize_t *ext4_get_reserved_space(struct inode *inode)
  * Calculate the number of metadata blocks need to reserve
  * to allocate a new block at @lblocks for non extent file based file
  */
-static int ext4_indirect_calc_metadata_amount(struct inode *inode,
-					      sector_t lblock)
+static int ext4_ind_calc_metadata_amount(struct inode *inode, sector_t lblock)
 {
 	struct ext4_inode_info *ei = EXT4_I(inode);
 	sector_t dind_mask = ~((sector_t)EXT4_ADDR_PER_BLOCK(inode->i_sb) - 1);
@@ -1137,7 +1136,7 @@ static int ext4_calc_metadata_amount(struct inode *inode, ext4_lblk_t lblock)
 	if (ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS))
 		return ext4_ext_calc_metadata_amount(inode, lblock);
 
-	return ext4_indirect_calc_metadata_amount(inode, lblock);
+	return ext4_ind_calc_metadata_amount(inode, lblock);
 }
 
 /*
@@ -5518,8 +5517,7 @@ int ext4_getattr(struct vfsmount *mnt, struct dentry *dentry,
 	return 0;
 }
 
-static int ext4_indirect_trans_blocks(struct inode *inode, int nrblocks,
-				      int chunk)
+static int ext4_ind_trans_blocks(struct inode *inode, int nrblocks, int chunk)
 {
 	int indirects;
 
@@ -5545,7 +5543,7 @@ static int ext4_indirect_trans_blocks(struct inode *inode, int nrblocks,
 static int ext4_index_trans_blocks(struct inode *inode, int nrblocks, int chunk)
 {
 	if (!(ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS)))
-		return ext4_indirect_trans_blocks(inode, nrblocks, chunk);
+		return ext4_ind_trans_blocks(inode, nrblocks, chunk);
 	return ext4_ext_index_trans_blocks(inode, nrblocks, chunk);
 }
 
