@@ -766,7 +766,6 @@ struct btrfs_space_info {
 	struct list_head block_groups[BTRFS_NR_RAID_TYPES];
 	spinlock_t lock;
 	struct rw_semaphore groups_sem;
-	atomic_t caching_threads;
 	wait_queue_head_t wait;
 };
 
@@ -827,6 +826,7 @@ struct btrfs_caching_control {
 	struct list_head list;
 	struct mutex mutex;
 	wait_queue_head_t wait;
+	struct btrfs_work work;
 	struct btrfs_block_group_cache *block_group;
 	u64 progress;
 	atomic_t count;
@@ -1035,6 +1035,8 @@ struct btrfs_fs_info {
 	struct btrfs_workers endio_write_workers;
 	struct btrfs_workers endio_freespace_worker;
 	struct btrfs_workers submit_workers;
+	struct btrfs_workers caching_workers;
+
 	/*
 	 * fixup workers take dirty pages that didn't properly go through
 	 * the cow mechanism and make them safe to write.  It happens
