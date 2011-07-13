@@ -4467,7 +4467,9 @@ static int __btrfs_free_extent(struct btrfs_trans_handle *trans,
 				printk(KERN_ERR "umm, got %d back from search"
 				       ", was looking for %llu\n", ret,
 				       (unsigned long long)bytenr);
-				btrfs_print_leaf(extent_root, path->nodes[0]);
+				if (ret > 0)
+					btrfs_print_leaf(extent_root,
+							 path->nodes[0]);
 			}
 			BUG_ON(ret);
 			extent_slot = path->slots[0];
