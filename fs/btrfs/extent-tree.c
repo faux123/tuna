@@ -3997,9 +3997,6 @@ int btrfs_delalloc_reserve_metadata(struct inode *inode, u64 num_bytes)
 
 	block_rsv_add_bytes(block_rsv, to_reserve, 1);
 
-	if (block_rsv->size > 512 * 1024 * 1024)
-		shrink_delalloc(NULL, root, to_reserve, 0);
-
 	return 0;
 }
 
