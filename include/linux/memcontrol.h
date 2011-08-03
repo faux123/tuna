@@ -76,8 +76,6 @@ extern void mem_cgroup_uncharge_end(void);
 
 extern void mem_cgroup_uncharge_page(struct page *page);
 extern void mem_cgroup_uncharge_cache_page(struct page *page);
-extern int mem_cgroup_shmem_charge_fallback(struct page *page,
-			struct mm_struct *mm, gfp_t gfp_mask);
 
 extern void mem_cgroup_out_of_memory(struct mem_cgroup *memcg, gfp_t gfp_mask);
 int task_in_mem_cgroup(struct task_struct *task, const struct mem_cgroup *memcg);
@@ -214,12 +212,6 @@ static inline void mem_cgroup_uncharge_page(struct page *page)
 
 static inline void mem_cgroup_uncharge_cache_page(struct page *page)
 {
-}
-
-static inline int mem_cgroup_shmem_charge_fallback(struct page *page,
-			struct mm_struct *mm, gfp_t gfp_mask)
-{
-	return 0;
 }
 
 static inline struct lruvec *mem_cgroup_zone_lruvec(struct zone *zone,
