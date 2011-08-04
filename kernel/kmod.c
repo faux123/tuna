@@ -279,7 +279,7 @@ static void __call_usermodehelper(struct work_struct *work)
  * land has been frozen during a system-wide hibernation or suspend operation).
  * Should always be manipulated under umhelper_sem acquired for write.
  */
-static int usermodehelper_disabled;
+static int usermodehelper_disabled = 1;
 
 /* Number of helpers running */
 static atomic_t running_helpers = ATOMIC_INIT(0);
