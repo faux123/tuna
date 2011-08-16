@@ -8,15 +8,6 @@
 #include <linux/fs.h>
 
 /*
- * The 1/16 region above the global dirty limit will be put to maximum pauses:
- *
- *	(limit, limit + limit/DIRTY_MAXPAUSE_AREA)
- *
- * The 1/16 region above the max-pause region, dirty exceeded bdi's will be put
- * to loops:
- *
- *	(limit + limit/DIRTY_MAXPAUSE_AREA, limit + limit/DIRTY_PASSGOOD_AREA)
- *
  * Further beyond, all dirtier tasks will enter a loop waiting (possibly long
  * time) for the dirty pages to drop, unless written enough pages.
  *
@@ -25,8 +16,6 @@
  * knocks down the global dirty threshold quickly, in which case the global
  * dirty limit will follow down slowly to prevent livelocking all dirtier tasks.
  */
-#define DIRTY_MAXPAUSE_AREA		16
-#define DIRTY_PASSGOOD_AREA		8
 
 struct backing_dev_info;
 
