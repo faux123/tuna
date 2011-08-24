@@ -1252,11 +1252,11 @@ get_rq:
 			if (request_count >= BLK_MAX_REQUEST_COUNT)
 				blk_flush_plug_list(plug, false);
 		}
-		list_add_tail(&req->queuelist, &plug->list);
-		plug->count++;
-		drive_stat_acct(req, 1);
 		if (plug->count >= BLK_MAX_REQUEST_COUNT)
 			blk_flush_plug_list(plug, false);
+		plug->count++;
+		list_add_tail(&req->queuelist, &plug->list);
+		drive_stat_acct(req, 1);
 	} else {
 		spin_lock_irq(q->queue_lock);
 		add_acct_request(q, req, where);
