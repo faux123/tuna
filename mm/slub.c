@@ -1574,7 +1574,6 @@ static void *get_partial_node(struct kmem_cache *s,
 {
 	struct page *page, *page2;
 	void *object = NULL;
-	int count = 0;
 
 	/*
 	 * Racy check. If we mistakenly see no partial slabs then we
@@ -1587,17 +1586,16 @@ static void *get_partial_node(struct kmem_cache *s,
 
 	spin_lock(&n->list_lock);
 	list_for_each_entry_safe(page, page2, &n->partial, lru) {
-		void *t = acquire_slab(s, n, page, count == 0);
+		void *t = acquire_slab(s, n, page, object == NULL);
 		int available;
 
 		if (!t)
 			break;
 
-		if (!count) {
+		if (!object) {
 			c->page = page;
 			c->node = page_to_nid(page);
 			stat(s, ALLOC_FROM_PARTIAL);
-			count++;
 			object = t;
 			available =  page->objects - page->inuse;
 		} else {
