@@ -1096,6 +1096,7 @@ static int blkiocg_file_write(struct cgroup *cgrp, struct cftype *cft,
 
 	if (blkio_delete_rule_command(newpn)) {
 		blkio_policy_delete_node(pn);
+		kfree(pn);
 		spin_unlock_irq(&blkcg->lock);
 		goto update_io_group;
 	}
