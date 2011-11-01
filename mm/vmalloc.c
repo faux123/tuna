@@ -1644,6 +1644,12 @@ void *__vmalloc_node_range(unsigned long size, unsigned long align,
 	insert_vmalloc_vmlist(area);
 
 	/*
+	 * In this function, newly allocated vm_struct is not added
+	 * to vmlist at __get_vm_area_node(). so, it is added here.
+	 */
+	insert_vmalloc_vmlist(area);
+
+	/*
 	 * A ref_count = 3 is needed because the vm_struct and vmap_area
 	 * structures allocated in the __get_vm_area_node() function contain
 	 * references to the virtual address of the vmalloc'ed block.
