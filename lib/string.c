@@ -361,7 +361,6 @@ char *strim(char *s)
 	size_t size;
 	char *end;
 
-	s = skip_spaces(s);
 	size = strlen(s);
 	if (!size)
 		return s;
@@ -371,7 +370,7 @@ char *strim(char *s)
 		end--;
 	*(end + 1) = '\0';
 
-	return s;
+	return skip_spaces(s);
 }
 EXPORT_SYMBOL(strim);
 
