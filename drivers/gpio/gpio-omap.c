@@ -82,6 +82,11 @@ struct gpio_bank {
 	u32 width;
 	u16 id;
 
+	u32 type_leveldetect0;
+	u32 type_leveldetect1;
+	u32 type_risingedge;
+	u32 type_fallingedge;
+
 	void (*set_dataout)(struct gpio_bank *bank, int gpio, int enable);
 	struct omap_gpio_reg_offs *regs;
 };
@@ -371,7 +376,23 @@ static int gpio_irq_type(struct irq_data *d, unsigned type)
 		return -EINVAL;
 
 	spin_lock_irqsave(&bank->lock, flags);
+
 	retval = _set_gpio_triggering(bank, GPIO_INDEX(bank, gpio), type);
+
+	bank->type_leveldetect0 &= ~GPIO_BIT(bank, gpio);
+	bank->type_leveldetect1 &= ~GPIO_BIT(bank, gpio);
+	bank->type_fallingedge &= ~GPIO_BIT(bank, gpio);
+	bank->type_risingedge &= ~GPIO_BIT(bank, gpio);
+
+	if (type & IRQ_TYPE_LEVEL_LOW)
+		bank->type_leveldetect0 |= GPIO_BIT(bank, gpio);
+	if (type & IRQ_TYPE_LEVEL_HIGH)
+		bank->type_leveldetect1 |= GPIO_BIT(bank, gpio);
+	if (type & IRQ_TYPE_EDGE_FALLING)
+		bank->type_fallingedge |= GPIO_BIT(bank, gpio);
+	if (type & IRQ_TYPE_EDGE_RISING)
+		bank->type_risingedge |= GPIO_BIT(bank, gpio);
+
 	spin_unlock_irqrestore(&bank->lock, flags);
 
 	if (type & (IRQ_TYPE_LEVEL_LOW | IRQ_TYPE_LEVEL_HIGH))
@@ -1390,11 +1411,13 @@ static int omap_gpio_pm_runtime_resume(struct device *dev)
 }
 
 #ifdef CONFIG_ARCH_OMAP2PLUS
-static int omap2_gpio_set_edge_wakeup(struct gpio_bank *bank)
+static int omap2_gpio_set_edge_wakeup(struct gpio_bank *bank, bool suspend)
 {
 	int ret = 0;
 	u32 wkup_status = 0;
 	u32 datain;
+	u32 mask;
+	u32 active;
 
 	if (pm_runtime_get_sync(bank->dev) < 0) {
 		dev_err(bank->dev, "%s: GPIO bank %d pm_runtime_get_sync "
@@ -1435,9 +1458,20 @@ static int omap2_gpio_set_edge_wakeup(struct gpio_bank *bank)
 	 * interrupt mask.
 	 */
 	datain = __raw_readl(bank->base + bank->regs->datain);
-	if ((datain & bank->context.ew_leveldetect1) ||
-	    (~datain & bank->context.ew_leveldetect0))
+	if (suspend)
+		mask = bank->suspend_wakeup;
+	else
+		mask = wkup_status;
+
+	active = (datain & bank->type_leveldetect1 & mask) |
+		 (~datain & bank->type_leveldetect0 & mask);
+
+	if (active) {
+		if (suspend)
+			pr_info("%s: aborted suspend due to gpio %d\n",
+				__func__, bank->id * bank->width + __ffs(active));
 		ret = -EBUSY;
+	}
 
 	if (pm_runtime_put_sync_suspend(bank->dev) < 0) {
 		dev_err(bank->dev, "%s: GPIO bank %d pm_runtime_put_sync "
@@ -1472,13 +1506,13 @@ static void omap2_gpio_restore_edge_wakeup(struct gpio_bank *bank)
 	}
 }
 
-int omap2_gpio_prepare_for_idle(int off_mode)
+int omap2_gpio_prepare_for_idle(int off_mode, bool suspend)
 {
 	int ret = 0;
 	struct gpio_bank *bank;
 
 	list_for_each_entry(bank, &omap_gpio_list, node) {
-		if (omap2_gpio_set_edge_wakeup(bank))
+		if (omap2_gpio_set_edge_wakeup(bank, suspend))
 			ret = -EBUSY;
 
 		if (bank->mod_usage && bank->loses_context && off_mode)
