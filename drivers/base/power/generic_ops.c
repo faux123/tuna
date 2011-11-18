@@ -104,7 +104,7 @@ static int __pm_generic_call(struct device *dev, int event)
 	const struct dev_pm_ops *pm = dev->driver ? dev->driver->pm : NULL;
 	int (*callback)(struct device *);
 
-	if (!pm || pm_runtime_suspended(dev))
+	if (!pm)
 		return 0;
 
 	switch (event) {
