@@ -79,3 +79,9 @@ GTAGS
 *.orig
 *~
 \#*#
+
+#individual specific ignores
+arch/arm/boot/compressed/ashldi3.S
+arch/arm/boot/compressed/piggy.xzkern
+
+
