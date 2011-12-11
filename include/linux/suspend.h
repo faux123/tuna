@@ -6,6 +6,7 @@
 #include <linux/init.h>
 #include <linux/pm.h>
 #include <linux/mm.h>
+#include <linux/freezer.h>
 #include <asm/errno.h>
 
 #if defined(CONFIG_PM_SLEEP) && defined(CONFIG_VT) && defined(CONFIG_VT_CONSOLE)
@@ -309,12 +310,14 @@ static inline void unlock_system_sleep(void) {}
 
 static inline void lock_system_sleep(void)
 {
+	freezer_do_not_count();
 	mutex_lock(&pm_mutex);
 }
 
 static inline void unlock_system_sleep(void)
 {
 	mutex_unlock(&pm_mutex);
+	freezer_count();
 }
 #endif
 
