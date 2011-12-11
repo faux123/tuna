@@ -1782,7 +1782,7 @@ cifs_async_writev(struct cifs_writedata *wdata)
 		goto async_writev_out;
 
 	/* 1 iov per page + 1 for header */
-	iov = kzalloc((wdata->nr_pages + 1) * sizeof(*iov), GFP_NOFS);
+	iov = kcalloc(wdata->nr_pages + 1, sizeof(*iov), GFP_NOFS);
 	if (iov == NULL) {
 		rc = -ENOMEM;
 		goto async_writev_out;
