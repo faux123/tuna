@@ -590,8 +590,14 @@ void print_async_list(void)
 {
 	struct debug_buffer dbg_buffer, *buf;
 	extern struct usb_hcd *ghcd_omap;
+	char *array;
 
-	memset(array, 0, BUF_SIZE);
+	array = kzalloc(BUF_SIZE, GFP_KERNEL);
+	if (!array) {
+		printk("\n EHCI : out of memory! \n");
+		return;
+	}
+
 	buf = &dbg_buffer;
 
 	buf->fill_func = fill_async_buffer;
@@ -616,9 +622,9 @@ void print_async_list(void)
 
 	printk("EHCI async list \n");
 	fill_async_buffer(buf);
-
 	//printk("%s\n", array);
 
+	kfree(array);
 }
 
 #define DBG_SCHED_LIMIT 64
