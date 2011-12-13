@@ -167,7 +167,7 @@ static bool is_task_frozen_enough(struct task_struct *task)
  */
 static int freezer_can_attach(struct cgroup_subsys *ss,
 			      struct cgroup *new_cgroup,
-			      struct task_struct *task)
+			      struct cgroup_taskset *tset)
 {
 	struct freezer *freezer;
 
