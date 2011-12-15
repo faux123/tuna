@@ -369,7 +369,14 @@ void blk_drain_queue(struct request_queue *q, bool drain_all)
 		if (drain_all)
 			blk_throtl_drain(q);
 
-		__blk_run_queue(q);
+		/*
+		 * This function might be called on a queue which failed
+		 * driver init after queue creation.  Some drivers
+		 * (e.g. fd) get unhappy in such cases.  Kick queue iff
+		 * dispatch queue has something on it.
+		 */
+		if (!list_empty(&q->queue_head))
+			__blk_run_queue(q);
 
 		drain |= q->rq.elvpriv;
 
