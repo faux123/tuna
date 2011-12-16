@@ -684,6 +684,9 @@ omap_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	int r;
 	u16 val;
 
+	/* We have the bus, enable IRQ */
+	enable_irq(dev->irq);
+
 	omap_i2c_unidle(dev);
 
 	r = omap_i2c_wait_for_bb(dev);
@@ -726,6 +729,7 @@ omap_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	omap_i2c_wait_for_bb(dev);
 out:
 	omap_i2c_idle(dev);
+	disable_irq(dev->irq);
 	return r;
 }
 
@@ -1152,6 +1156,9 @@ omap_i2c_probe(struct platform_device *pdev)
 		dev_err(dev->dev, "failure requesting irq %i\n", dev->irq);
 		goto err_unuse_clocks;
 	}
+
+	/* We enable IRQ only when request for I2C from master */
+	disable_irq(dev->irq);
 
 	dev_info(dev->dev, "bus %d rev%d.%d at %d kHz\n",
 		 pdev->id, dev->rev >> 4, dev->rev & 0xf, dev->speed);
