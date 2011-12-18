@@ -17,7 +17,7 @@
 
 extern void *omap3_secure_ram_storage;
 extern void omap3_pm_off_mode_enable(int);
-extern void omap_sram_idle(void);
+extern void omap_sram_idle(bool suspend);
 extern int omap3_can_sleep(void);
 extern int omap_set_pwrdm_state(struct powerdomain *pwrdm, u32 state);
 extern int omap3_idle_init(void);
@@ -55,6 +55,15 @@ static inline int omap3_opp_init(void)
 	return -EINVAL;
 }
 static inline int omap4_opp_init(void)
+{
+	return -EINVAL;
+}
+#endif
+
+#ifdef CONFIG_PM
+int omap4_pm_cold_reset(char *reason);
+#else
+int omap4_pm_cold_reset(char *reason)
 {
 	return -EINVAL;
 }

@@ -32,6 +32,7 @@
 #include <linux/sii9234.h>
 #include <linux/i2c/twl.h>
 #include <linux/mutex.h>
+#include <linux/switch.h>
 
 #include <plat/usb.h>
 
@@ -83,13 +84,19 @@
 #define TUNA_MANUAL_UART_LTE	2
 #define TUNA_MANUAL_UART_AP	3
 
-#define TUNA_OTG_ID_FSA9480_PRIO		INT_MIN
-#define TUNA_OTG_ID_SII9234_PRIO		INT_MIN + 1
-#define TUNA_OTG_ID_FSA9480_LAST_PRIO		INT_MAX
-
 #define CHARGERUSB_CTRL1	0x8
 #define CHARGERUSB_CTRL3	0xA
 #define CHARGERUSB_CINLIMIT	0xE
+
+#define TWL6030_VBUS_IRQ	(TWL6030_IRQ_BASE + USB_PRES_INTR_OFFSET)
+#define TWL6030_VBUS_FLAGS	(IRQF_TRIGGER_FALLING | IRQF_ONESHOT)
+
+#define TWL_REG_CONTROLLER_INT_MASK	0x00
+#define TWL_CONTROLLER_MVBUS_DET	BIT(1)
+#define TWL_CONTROLLER_RSVD		BIT(5)
+
+#define TWL_REG_CONTROLLER_STAT1	0x03
+#define TWL_STAT1_VBUS_DET		BIT(2)
 
 struct tuna_otg {
 	struct otg_transceiver		otg;
@@ -104,6 +111,8 @@ struct tuna_otg {
 	int				usb_manual_mode;
 	int				uart_manual_mode;
 	int				current_device;
+
+	struct switch_dev		dock_switch;
 };
 static struct tuna_otg tuna_otg_xceiv;
 
@@ -167,6 +176,8 @@ static struct attribute *manual_mode_attributes[] = {
 static const struct attribute_group manual_mode_group = {
 	.attrs = manual_mode_attributes,
 };
+
+static bool tuna_twl_chgctrl_init;
 
 static void tuna_mux_usb(int state)
 {
@@ -351,6 +362,47 @@ static void tuna_lte_uart_actions(struct tuna_otg *tuna_otg)
 	 */
 }
 
+static void tuna_otg_mask_vbus_irq(void)
+{
+	twl6030_interrupt_mask(TWL6030_CHARGER_CTRL_INT_MASK,
+				REG_INT_MSK_LINE_C);
+	twl6030_interrupt_mask(TWL6030_CHARGER_CTRL_INT_MASK,
+				REG_INT_MSK_STS_C);
+}
+
+static void tuna_otg_unmask_vbus_irq(void)
+{
+	if (!tuna_twl_chgctrl_init) {
+		int r;
+
+		r = twl_i2c_write_u8(TWL_MODULE_MAIN_CHARGE,
+				     (u8) ~(TWL_CONTROLLER_RSVD |
+					    TWL_CONTROLLER_MVBUS_DET),
+				     TWL_REG_CONTROLLER_INT_MASK);
+
+		if (r)
+			pr_err_once("%s: Error writing twl charge ctrl int mask\n",
+				    __func__);
+		else
+			tuna_twl_chgctrl_init = true;
+	}
+
+	twl6030_interrupt_unmask(TWL6030_CHARGER_CTRL_INT_MASK,
+				REG_INT_MSK_LINE_C);
+	twl6030_interrupt_unmask(TWL6030_CHARGER_CTRL_INT_MASK,
+				REG_INT_MSK_STS_C);
+}
+
+static bool tuna_otg_vbus_present(void)
+{
+	u8 vbus_state;
+
+	twl_i2c_read_u8(TWL_MODULE_MAIN_CHARGE, &vbus_state,
+				TWL_REG_CONTROLLER_STAT1);
+
+	return !!(vbus_state & TWL_STAT1_VBUS_DET);
+}
+
 static void tuna_fsa_usb_detected(int device)
 {
 	struct tuna_otg *tuna_otg = &tuna_otg_xceiv;
@@ -363,6 +415,9 @@ static void tuna_fsa_usb_detected(int device)
 
 	pr_debug("detected %x\n", device);
 	switch (device) {
+	case FSA9480_DETECT_AV_365K_CHARGER:
+		tuna_otg_set_dock_switch(1);
+		/* intentional fall-through */
 	case FSA9480_DETECT_USB:
 		if (tuna_otg->usb_manual_mode == TUNA_MANUAL_USB_MODEM)
 			tuna_cp_usb_attach(tuna_otg);
@@ -404,20 +459,26 @@ static void tuna_fsa_usb_detected(int device)
 			if (tuna_otg->uart_manual_mode == TUNA_MANUAL_UART_NONE)
 				tuna_ap_uart_actions(tuna_otg);
 			break;
+		case FSA9480_DETECT_AV_365K_CHARGER:
+			tuna_otg_set_dock_switch(0);
+			/* intentional fall-through */
 		case FSA9480_DETECT_USB:
 			if (tuna_otg->usb_manual_mode == TUNA_MANUAL_USB_MODEM)
 				tuna_cp_usb_detach(tuna_otg);
 			else
 				tuna_ap_usb_detach(tuna_otg);
 			break;
-		case FSA9480_DETECT_UART:
-			break;
 		case FSA9480_DETECT_USB_HOST:
 			tuna_usb_host_detach(tuna_otg);
 			break;
 		case FSA9480_DETECT_CHARGER:
-		default:
 			tuna_ap_usb_detach(tuna_otg);
+			break;
+		case FSA9480_DETECT_AV_365K:
+			tuna_otg_set_dock_switch(0);
+			break;
+		case FSA9480_DETECT_UART:
+		default:
 			break;
 		};
 		break;
@@ -435,7 +496,11 @@ static void tuna_fsa_usb_detected(int device)
 			break;
 		};
 		break;
+	case FSA9480_DETECT_AV_365K:
+		tuna_otg_set_dock_switch(1);
+		break;
 	case FSA9480_DETECT_UART:
+	default:
 		break;
 	}
 
@@ -455,13 +520,19 @@ static struct fsa9480_detect_set fsa_detect_sets[] = {
 };
 
 static struct fsa9480_platform_data tuna_fsa9480_pdata = {
-	.detect_time	= 500,
-	.detect_sets	= fsa_detect_sets,
-	.num_sets	= ARRAY_SIZE(fsa_detect_sets),
+	.detect_time		= 500,
+	.detect_sets		= fsa_detect_sets,
+	.num_sets		= ARRAY_SIZE(fsa_detect_sets),
 
-	.enable		= tuna_mux_usb_to_fsa,
-	.detected	= tuna_fsa_usb_detected,
-	.external_id	= GPIO_USB_OTG_ID,
+	.enable			= tuna_mux_usb_to_fsa,
+	.detected		= tuna_fsa_usb_detected,
+	.external_id		= GPIO_USB_OTG_ID,
+
+	.external_vbus_irq	= TWL6030_VBUS_IRQ,
+	.external_vbus_flags	= TWL6030_VBUS_FLAGS,
+	.mask_vbus_irq		= tuna_otg_mask_vbus_irq,
+	.unmask_vbus_irq	= tuna_otg_unmask_vbus_irq,
+	.vbus_present		= tuna_otg_vbus_present,
 };
 
 static struct i2c_board_info __initdata tuna_connector_i2c4_boardinfo[] = {
@@ -703,28 +774,74 @@ static void sii9234_enable_vbus(bool enable)
 
 }
 
-static void sii9234_vbus_present(bool on)
+static void sii9234_connect(bool on, u8 *devcap)
 {
 	struct tuna_otg *tuna_otg = &tuna_otg_xceiv;
+	unsigned long val;
+	int dock = 0;
+
+	if (on) {
+		val = USB_EVENT_VBUS;
+		if (devcap) {
+			u16 adopter_id =
+				(devcap[MHL_DEVCAP_ADOPTER_ID_H] << 8) |
+				devcap[MHL_DEVCAP_ADOPTER_ID_L];
+			u16 device_id =
+				(devcap[MHL_DEVCAP_DEVICE_ID_H] << 8) |
+				devcap[MHL_DEVCAP_DEVICE_ID_L];
+
+			if (adopter_id == 0x3333 || adopter_id == 321) {
+				if (devcap[MHL_DEVCAP_RESERVED] == 2)
+					val = USB_EVENT_CHARGER;
+
+				if (device_id == 0x1234)
+					dock = 1;
+			}
+		}
+	} else {
+		val = USB_EVENT_NONE;
+	}
 
 	tuna_otg->otg.state = OTG_STATE_B_IDLE;
 	tuna_otg->otg.default_a = false;
-	tuna_otg->otg.last_event = on ? USB_EVENT_VBUS : USB_EVENT_NONE;
+	tuna_otg->otg.last_event = val;
+
 	atomic_notifier_call_chain(&tuna_otg->otg.notifier,
-				on ? USB_EVENT_VBUS : USB_EVENT_NONE,
+				   val, tuna_otg->otg.gadget);
+	tuna_otg_set_dock_switch(dock);
+
+}
+
+void tuna_otg_pogo_charger(enum pogo_power_state pogo_state)
+{
+	struct tuna_otg *tuna_otg = &tuna_otg_xceiv;
+	unsigned long power_state;
+
+	switch (pogo_state) {
+		case POGO_POWER_CHARGER:
+			power_state = USB_EVENT_CHARGER;
+			break;
+		case POGO_POWER_HOST:
+			power_state = USB_EVENT_VBUS;
+			break;
+		case POGO_POWER_DISCONNECTED:
+		default:
+			power_state = USB_EVENT_NONE;
+			break;
+	}
+
+	tuna_otg->otg.state = OTG_STATE_B_IDLE;
+	tuna_otg->otg.default_a = false;
+	tuna_otg->otg.last_event = power_state;
+	atomic_notifier_call_chain(&tuna_otg->otg.notifier, power_state,
 				tuna_otg->otg.gadget);
 }
 
-void tuna_otg_pogo_charger(bool on)
+void tuna_otg_set_dock_switch(int enable)
 {
 	struct tuna_otg *tuna_otg = &tuna_otg_xceiv;
 
-	tuna_otg->otg.state = OTG_STATE_B_IDLE;
-	tuna_otg->otg.default_a = false;
-	tuna_otg->otg.last_event = on ? USB_EVENT_CHARGER : USB_EVENT_NONE;
-	atomic_notifier_call_chain(&tuna_otg->otg.notifier,
-				on ? USB_EVENT_CHARGER : USB_EVENT_NONE,
-				tuna_otg->otg.gadget);
+	switch_set_state(&tuna_otg->dock_switch, enable);
 }
 
 static struct sii9234_platform_data sii9234_pdata = {
@@ -732,7 +849,7 @@ static struct sii9234_platform_data sii9234_pdata = {
 	.enable = tuna_mux_usb_to_mhl,
 	.power = sii9234_power,
 	.enable_vbus = sii9234_enable_vbus,
-	.vbus_present = sii9234_vbus_present,
+	.connect = sii9234_connect,
 };
 
 static struct i2c_board_info __initdata tuna_i2c5_boardinfo[] = {
@@ -857,6 +974,9 @@ int __init omap4_tuna_connector_init(void)
 
 	i2c_register_board_info(5, tuna_i2c5_boardinfo,
 			ARRAY_SIZE(tuna_i2c5_boardinfo));
+
+	tuna_otg->dock_switch.name = "dock";
+	switch_dev_register(&tuna_otg->dock_switch);
 
 	return 0;
 }

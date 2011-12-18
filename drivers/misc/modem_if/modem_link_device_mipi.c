@@ -390,6 +390,7 @@ static void mipi_hsi_start_work(struct work_struct *work)
 			container_of(work, struct mipi_link_device,
 						start_work.work);
 
+	mipi_ld->ld.com_state = COM_HANDSHAKE;
 	ret = if_hsi_protocol_send(mipi_ld, HSI_CMD_CHANNEL, &start_cmd, 1);
 	if (ret < 0) {
 		/* TODO: Re Enqueue */
@@ -907,6 +908,7 @@ static int if_hsi_rx_cmd_handle(struct mipi_link_device *mipi_ld, u32 cmd,
 	switch (cmd) {
 	case HSI_LL_MSG_OPEN_CONN_OCTET:
 		switch (channel->recv_step) {
+		case STEP_SEND_TO_CONN_CLOSED:
 		case STEP_IDLE:
 			channel->recv_step = STEP_TO_ACK;
 
@@ -953,8 +955,17 @@ static int if_hsi_rx_cmd_handle(struct mipi_link_device *mipi_ld, u32 cmd,
 			return 0;
 
 		default:
-			pr_debug("[MIPI-HSI] wrong state : %08x, recv_step : %d\n",
+			pr_err("[MIPI-HSI] wrong state : %08x, recv_step : %d\n",
 						cmd, channel->recv_step);
+
+			ret = if_hsi_send_command(mipi_ld, HSI_LL_MSG_ACK, ch,
+						param);
+			if (ret) {
+				pr_err("[MIPI-HSI] if_hsi_send_command fail : %d\n",
+							ret);
+				return ret;
+			}
+			pr_err("[MIPI-HSI] Send ACK AGAIN\n");
 			return -1;
 		}
 
@@ -1056,7 +1067,8 @@ retry_send:
 			if (iod->format == IPC_FMT)
 				break;
 
-		if ((mipi_ld->ld.com_state == COM_ONLINE) &&
+		if (((mipi_ld->ld.com_state == COM_ONLINE) ||
+			(mipi_ld->ld.com_state == COM_HANDSHAKE)) &&
 			(iod->mc->phone_state == STATE_ONLINE)) {
 			channel->send_step = STEP_SEND_OPEN_CONN;
 			hsi_conn_err_recovery(mipi_ld);
@@ -1212,7 +1224,8 @@ static void if_hsi_write_done(struct hsi_device *dev, unsigned int size)
 			(struct mipi_link_device *)if_hsi_driver.priv_data;
 	struct if_hsi_channel *channel = &mipi_ld->hsi_channles[dev->n_ch];
 
-	if ((((*channel->tx_data & 0xF0000000) >> 28) ==
+	if ((channel->channel_id == HSI_CONTROL_CHANNEL) &&
+		(((*channel->tx_data & 0xF0000000) >> 28) ==
 			HSI_LL_MSG_CONN_CLOSED) &&
 			mipi_ld->ld.com_state == COM_ONLINE) {
 		mipi_ld->hsi_channles[
@@ -1424,8 +1437,13 @@ static void if_hsi_read_done(struct hsi_device *dev, unsigned int size)
 
 			ret = iod->recv(iod, (char *)channel->rx_data,
 						channel->packet_size);
-			if (ret < 0)
+			if (ret < 0) {
 				pr_err("[MIPI-HSI] recv call fail : %d\n", ret);
+				print_hex_dump_bytes("[HSI]",
+					DUMP_PREFIX_OFFSET,
+					channel->rx_data, channel->packet_size);
+			}
+			channel->packet_size = 0;
 
 			channel->recv_step = STEP_SEND_TO_CONN_CLOSED;
 

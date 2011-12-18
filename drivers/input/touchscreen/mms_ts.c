@@ -70,6 +70,10 @@ static bool mms_flash_from_probe;
 module_param_named(flash_from_probe, mms_flash_from_probe, bool,
 		   S_IWUSR | S_IRUGO);
 
+static bool mms_die_on_flash_fail = true;
+module_param_named(die_on_flash_fail, mms_die_on_flash_fail, bool,
+		   S_IWUSR | S_IRUGO);
+
 struct mms_ts_info {
 	struct i2c_client		*client;
 	struct input_dev		*input_dev;
@@ -457,6 +461,7 @@ static int fw_write_image(struct mms_ts_info *info, const u8 *data, size_t len)
 			dev_err(&client->dev,
 				"mismatch @ addr 0x%x: 0x%x != 0x%x\n",
 				addr, verify_val, val);
+			hw_reboot_bootloader(info);
 			continue;
 		}
 		if (retries < 0)
@@ -684,7 +689,8 @@ static void mms_ts_fw_load(const struct firmware *fw, void *context)
 			dev_err(&client->dev,
 				"error updating firmware to version 0x%02x\n",
 				fw_img->fw_ver);
-			dev_err(&client->dev, "retrying flashing\n");
+			if (retries)
+				dev_err(&client->dev, "retrying flashing\n");
 			continue;
 		}
 
@@ -698,8 +704,12 @@ static void mms_ts_fw_load(const struct firmware *fw, void *context)
 				"ERROR: fw update succeeded, but fw version is still wrong (0x%x != 0x%x)\n",
 				ver, fw_img->fw_ver);
 		}
-		dev_err(&client->dev, "retrying flashing\n");
+		if (retries)
+			dev_err(&client->dev, "retrying flashing\n");
 	}
+
+	dev_err(&client->dev, "could not flash firmware, ran out of retries\n");
+	BUG_ON(mms_die_on_flash_fail);
 
 err:
 	/* complete anyway, so open() doesn't get blocked */

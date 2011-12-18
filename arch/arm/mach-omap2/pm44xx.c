@@ -79,6 +79,8 @@ static struct voltagedomain *mpu_voltdm, *iva_voltdm, *core_voltdm;
 static struct clockdomain *tesla_clkdm;
 static struct powerdomain *tesla_pwrdm;
 
+static struct clockdomain *emif_clkdm, *mpuss_clkdm;
+
 /* Yet un-named erratum which requires AUTORET to be disabled for IVA PD */
 #define OMAP4_PM_ERRATUM_IVA_AUTO_RET_iXXX	BIT(1)
 /*
@@ -88,6 +90,22 @@ static struct powerdomain *tesla_pwrdm;
 */
 #define OMAP4_PM_ERRATUM_HSI_SWAKEUP_iXXX	BIT(2)
 
+/* Dynamic dependendency Cannot be enabled due to i688 erratum ID for 443x */
+#define OMAP4_PM_ERRATUM_MPU_EMIF_NO_DYNDEP_i688	BIT(3)
+/*
+ * Dynamic dependendency Cannot be enabled due to i688 erratum ID for above 443x
+ * NOTE: this is NOT YET a confirmed erratum for 446x, but provided here in
+ * anticipation.
+ * If a fix is found at a later date, the code using this can be removed.
+ * WA involves:
+ * Enable MPU->EMIF SD before WFI and disable while coming out of WFI.
+ * This works around system hang/lockups seen when only MPU->EMIF
+ * dynamic dependency set. Allows dynamic dependency to be used
+ * in all active usecases and get all the power savings accordingly.
+ * TODO: Once this is available as final Errata, update with proper
+ * fix.
+ */
+#define OMAP4_PM_ERRATUM_MPU_EMIF_NO_DYNDEP_IDLE_iXXX	BIT(4)
 
 u8 pm44xx_errata;
 #define is_pm44xx_erratum(erratum) (pm44xx_errata & OMAP4_PM_ERRATUM_##erratum)
@@ -121,13 +139,30 @@ void omap4_trigger_ioctrl(void)
 	/* Trigger WUCLKIN enable */
 	omap4_prminst_rmw_inst_reg_bits(OMAP4430_WUCLK_CTRL_MASK, OMAP4430_WUCLK_CTRL_MASK,
 		OMAP4430_PRM_PARTITION, OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_IO_PMCTRL_OFFSET);
-	omap_test_timeout(
-		((omap4_prminst_read_inst_reg(OMAP4430_PRM_PARTITION, OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_IO_PMCTRL_OFFSET)
-		>> OMAP4430_WUCLK_STATUS_SHIFT) == 1),
-		MAX_IOPAD_LATCH_TIME, i);
+	omap_test_timeout((((omap4_prminst_read_inst_reg(OMAP4430_PRM_PARTITION,
+						   OMAP4430_PRM_DEVICE_INST,
+						   OMAP4_PRM_IO_PMCTRL_OFFSET) &
+				OMAP4430_WUCLK_STATUS_MASK) >>
+				OMAP4430_WUCLK_STATUS_SHIFT) == 1),
+			MAX_IOPAD_LATCH_TIME, i);
+	if (i == MAX_IOPAD_LATCH_TIME)
+		pr_err("%s: Max IO latch time reached for WUCLKIN enable\n",
+			__func__);
+
 	/* Trigger WUCLKIN disable */
 	omap4_prminst_rmw_inst_reg_bits(OMAP4430_WUCLK_CTRL_MASK, 0x0,
 		OMAP4430_PRM_PARTITION, OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_IO_PMCTRL_OFFSET);
+
+	/* Ensure this is cleared */
+	omap_test_timeout((((omap4_prminst_read_inst_reg(OMAP4430_PRM_PARTITION,
+						   OMAP4430_PRM_DEVICE_INST,
+						   OMAP4_PRM_IO_PMCTRL_OFFSET) &
+				OMAP4430_WUCLK_STATUS_MASK) >>
+				OMAP4430_WUCLK_STATUS_SHIFT) == 0),
+			MAX_IOPAD_LATCH_TIME, i);
+	if (i == MAX_IOPAD_LATCH_TIME)
+		pr_err("%s: Max IO latch time reached for WUCLKIN disable\n",
+			__func__);
 	return;
 }
 
@@ -143,12 +178,20 @@ void omap4_enter_sleep(unsigned int cpu, unsigned int power_state, bool suspend)
 	int core_next_state = PWRDM_POWER_ON;
 	int mpu_next_state = PWRDM_POWER_ON;
 	int ret;
+	int staticdep_wa_applied = 0;
 
 	pwrdm_clear_all_prev_pwrst(cpu0_pwrdm);
 	pwrdm_clear_all_prev_pwrst(mpu_pwrdm);
 	pwrdm_clear_all_prev_pwrst(core_pwrdm);
 	pwrdm_clear_all_prev_pwrst(per_pwrdm);
 	omap4_device_clear_prev_off_state();
+
+	/*
+	 * Just return if we detect a scenario where we conflict
+	 * with DVFS
+	 */
+	if (omap_dvfs_is_any_dev_scaling())
+		return;
 
 	cpu0_next_state = pwrdm_read_next_pwrst(cpu0_pwrdm);
 	per_next_state = pwrdm_read_next_pwrst(per_pwrdm);
@@ -159,15 +202,32 @@ void omap4_enter_sleep(unsigned int cpu, unsigned int power_state, bool suspend)
 	if (ret)
 		goto abort_gpio;
 
-	if (mpu_next_state < PWRDM_POWER_INACTIVE) {
-		if (omap_dvfs_is_scaling(mpu_voltdm)) {
-			mpu_next_state = PWRDM_POWER_INACTIVE;
-			pwrdm_set_next_pwrst(mpu_pwrdm, mpu_next_state);
+	if (is_pm44xx_erratum(MPU_EMIF_NO_DYNDEP_IDLE_iXXX) &&
+			mpu_next_state <= PWRDM_POWER_INACTIVE) {
+		/* Configures MEMIF clockdomain in SW_WKUP */
+		if (clkdm_wakeup(emif_clkdm)) {
+			pr_err("%s: Failed to force wakeup of %s\n",
+				__func__, emif_clkdm->name);
 		} else {
-			omap_sr_disable_reset_volt(mpu_voltdm);
-			omap_vc_set_auto_trans(mpu_voltdm,
-				OMAP_VC_CHANNEL_AUTO_TRANSITION_RETENTION);
+			/* Enable MPU-EMIF Static Dependency around WFI */
+			if (clkdm_add_wkdep(mpuss_clkdm, emif_clkdm))
+				pr_err("%s: Failed to Add wkdep %s->%s\n",
+					__func__, mpuss_clkdm->name,
+					emif_clkdm->name);
+			else
+				staticdep_wa_applied = 1;
+
+			/* Configures MEMIF clockdomain back to HW_AUTO */
+			clkdm_allow_idle(emif_clkdm);
 		}
+	}
+	if (mpu_next_state < PWRDM_POWER_INACTIVE) {
+		if (omap_sr_disable_reset_volt(mpu_voltdm))
+			goto abort_device_off;
+
+		omap_sr_disable_reset_volt(mpu_voltdm);
+		omap_vc_set_auto_trans(mpu_voltdm,
+			OMAP_VC_CHANNEL_AUTO_TRANSITION_RETENTION);
 	}
 
 	if (core_next_state < PWRDM_POWER_ON) {
@@ -177,22 +237,18 @@ void omap4_enter_sleep(unsigned int cpu, unsigned int power_state, bool suspend)
 		 * enabling AUTO RET requires SR to disabled, its done here for
 		 * now. Needs a relook to see if this can be optimized.
 		 */
-		if (omap_dvfs_is_scaling(core_voltdm) ||
-		    omap_dvfs_is_scaling(iva_voltdm)) {
-			core_next_state = PWRDM_POWER_ON;
-			pwrdm_set_next_pwrst(core_pwrdm, core_next_state);
-		} else {
-			omap_sr_disable_reset_volt(iva_voltdm);
-			omap_sr_disable_reset_volt(core_voltdm);
-			omap_vc_set_auto_trans(core_voltdm,
-				OMAP_VC_CHANNEL_AUTO_TRANSITION_RETENTION);
-			if (!is_pm44xx_erratum(IVA_AUTO_RET_iXXX)) {
-				omap_vc_set_auto_trans(iva_voltdm,
-				  OMAP_VC_CHANNEL_AUTO_TRANSITION_RETENTION);
-			}
-
-			omap_temp_sensor_prepare_idle();
+		if (omap_sr_disable_reset_volt(iva_voltdm))
+			goto abort_device_off;
+		if (omap_sr_disable_reset_volt(core_voltdm))
+			goto abort_device_off;
+		omap_vc_set_auto_trans(core_voltdm,
+			OMAP_VC_CHANNEL_AUTO_TRANSITION_RETENTION);
+		if (!is_pm44xx_erratum(IVA_AUTO_RET_iXXX)) {
+			omap_vc_set_auto_trans(iva_voltdm,
+			  OMAP_VC_CHANNEL_AUTO_TRANSITION_RETENTION);
 		}
+
+		omap_temp_sensor_prepare_idle();
 	}
 
 	if (omap4_device_next_state_off()) {
@@ -240,8 +296,10 @@ abort_device_off:
 		}
 
 		omap_temp_sensor_resume_idle();
-		omap_sr_enable(iva_voltdm);
-		omap_sr_enable(core_voltdm);
+		omap_sr_enable(iva_voltdm,
+				omap_voltage_get_curr_vdata(iva_voltdm));
+		omap_sr_enable(core_voltdm,
+				omap_voltage_get_curr_vdata(core_voltdm));
 	}
 
 	if (omap4_device_prev_state_off()) {
@@ -261,9 +319,28 @@ abort_device_off:
 	if (mpu_next_state < PWRDM_POWER_INACTIVE) {
 		omap_vc_set_auto_trans(mpu_voltdm,
 				OMAP_VC_CHANNEL_AUTO_TRANSITION_DISABLE);
-		omap_sr_enable(mpu_voltdm);
+		omap_sr_enable(mpu_voltdm,
+				omap_voltage_get_curr_vdata(mpu_voltdm));
 	}
 
+	/*
+	 * NOTE: is_pm44xx_erratum is not strictly required, but retained for
+	 * code context redability.
+	 */
+	if (is_pm44xx_erratum(MPU_EMIF_NO_DYNDEP_IDLE_iXXX) &&
+			staticdep_wa_applied) {
+		/* Configures MEMIF clockdomain in SW_WKUP */
+		if (clkdm_wakeup(emif_clkdm))
+			pr_err("%s: Failed to force wakeup of %s\n",
+				__func__, emif_clkdm->name);
+		/* Disable MPU-EMIF Static Dependency on WFI exit */
+		else if (clkdm_del_wkdep(mpuss_clkdm, emif_clkdm))
+			pr_err("%s: Failed to remove wkdep %s->%s\n",
+			__func__, mpuss_clkdm->name,
+			emif_clkdm->name);
+		/* Configures MEMIF clockdomain back to HW_AUTO */
+		clkdm_allow_idle(emif_clkdm);
+	}
 
 abort_gpio:
 	return;
@@ -710,6 +787,35 @@ static const struct platform_suspend_ops omap_pm_ops = {
 void omap4_enter_sleep(unsigned int cpu, unsigned int power_state){ return; }
 #endif /* CONFIG_SUSPEND */
 
+/**
+ * omap4_pm_cold_reset() - Cold reset OMAP4
+ * @reason:	why am I resetting.
+ *
+ * As per the TRM, it is recommended that we set all the power domains to
+ * ON state before we trigger cold reset.
+ */
+int omap4_pm_cold_reset(char *reason)
+{
+	struct power_state *pwrst;
+
+	/* Switch ON all pwrst registers */
+	list_for_each_entry(pwrst, &pwrst_list, node) {
+		if (pwrst->pwrdm->pwrsts_logic_ret)
+			pwrdm_set_logic_retst(pwrst->pwrdm, PWRDM_POWER_ON);
+		if (pwrst->pwrdm->pwrsts)
+			omap_set_pwrdm_state(pwrst->pwrdm, PWRDM_POWER_ON);
+	}
+
+	WARN(1, "Arch Cold reset has been triggered due to %s\n", reason);
+	omap4_prm_global_cold_sw_reset(); /* never returns */
+
+	/* If we reached here - something bad went on.. */
+	BUG();
+
+	/* make the compiler happy */
+	return -EINTR;
+}
+
 /*
  * Enable hardware supervised mode for all clockdomains if it's
  * supported. Initiate sleep transition for other clockdomains, if
@@ -750,6 +856,25 @@ static int __init pwrdms_setup(struct powerdomain *pwrdm, void *unused)
 	return omap_set_pwrdm_state(pwrst->pwrdm, pwrst->next_state);
 }
 
+static int __init _voltdm_sum_time(struct voltagedomain *voltdm, void *user)
+{
+	struct omap_voltdm_pmic *pmic;
+	u32 *max_time = (u32 *)user;
+
+	if (!voltdm || !max_time) {
+		WARN_ON(1);
+		return -EINVAL;
+	}
+
+	pmic = voltdm->pmic;
+	if (pmic) {
+		*max_time += pmic->on_volt / pmic->slew_rate;
+		*max_time += pmic->switch_on_time;
+	}
+
+	return 0;
+}
+
 static u32 __init _usec_to_val_scrm(unsigned long rate, u32 usec,
 				    u32 shift, u32 mask)
 {
@@ -770,13 +895,15 @@ static void __init syscontrol_setup_regs(void)
 {
 	u32 v;
 
-	/* Disable LPDDR VREF manual control */
+	/* Disable LPDDR VREF manual control and enable Auto control */
 	v = omap4_ctrl_pad_readl(OMAP4_CTRL_MODULE_PAD_CORE_CONTROL_LPDDR2IO1_3);
 	v &= ~(OMAP4_LPDDR21_VREF_EN_CA_MASK | OMAP4_LPDDR21_VREF_EN_DQ_MASK);
+	v |= OMAP4_LPDDR21_VREF_AUTO_EN_CA_MASK | OMAP4_LPDDR21_VREF_AUTO_EN_DQ_MASK;
         omap4_ctrl_pad_writel(v, OMAP4_CTRL_MODULE_PAD_CORE_CONTROL_LPDDR2IO1_3);
 
 	v = omap4_ctrl_pad_readl(OMAP4_CTRL_MODULE_PAD_CORE_CONTROL_LPDDR2IO2_3);
 	v &= ~(OMAP4_LPDDR21_VREF_EN_CA_MASK | OMAP4_LPDDR21_VREF_EN_DQ_MASK);
+	v |= OMAP4_LPDDR21_VREF_AUTO_EN_CA_MASK | OMAP4_LPDDR21_VREF_AUTO_EN_DQ_MASK;
         omap4_ctrl_pad_writel(v, OMAP4_CTRL_MODULE_PAD_CORE_CONTROL_LPDDR2IO2_3);
 
 	/*
@@ -796,6 +923,7 @@ static void __init prcm_setup_regs(void)
 	struct clk *clk32k = clk_get(NULL, "sys_32k_ck");
 	unsigned long rate32k = 0;
 	u32 val, tshut, tstart;
+	u32 reset_delay_time = 0;
 
 	if (clk32k) {
 		rate32k = clk_get_rate(clk32k);
@@ -844,17 +972,47 @@ static void __init prcm_setup_regs(void)
 	omap4_prminst_write_inst_reg(0x2, OMAP4430_PRM_PARTITION,
 		OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_CLKREQCTRL_OFFSET);
 
+	if (!rate32k)
+		goto no_32k;
+
 	/* Setup max clksetup time for oscillator */
-	if (rate32k) {
-		omap_pm_get_osc_lp_time(&tstart, &tshut);
-		val = _usec_to_val_scrm(rate32k, tstart, OMAP4_SETUPTIME_SHIFT,
-				OMAP4_SETUPTIME_MASK);
-		val |= _usec_to_val_scrm(rate32k, tshut, OMAP4_DOWNTIME_SHIFT,
-				OMAP4_DOWNTIME_MASK);
-		omap4_prminst_write_inst_reg(val, OMAP4430_SCRM_PARTITION, 0x0,
-				OMAP4_SCRM_CLKSETUPTIME_OFFSET);
+	omap_pm_get_osc_lp_time(&tstart, &tshut);
+	val = _usec_to_val_scrm(rate32k, tstart, OMAP4_SETUPTIME_SHIFT,
+			OMAP4_SETUPTIME_MASK);
+	val |= _usec_to_val_scrm(rate32k, tshut, OMAP4_DOWNTIME_SHIFT,
+			OMAP4_DOWNTIME_MASK);
+	omap4_prminst_write_inst_reg(val, OMAP4430_SCRM_PARTITION, 0x0,
+			OMAP4_SCRM_CLKSETUPTIME_OFFSET);
+
+	/*
+	 * Setup OMAP WARMRESET time:
+	 * we use the sum of each voltage domain setup times to handle
+	 * the worst case condition where the device resets from OFF mode.
+	 * hence we leave PRM_VOLTSETUP_WARMRESET alone as this is
+	 * already part of RSTTIME1 we program in.
+	 * in addition, to handle oscillator switch off and switch back on
+	 * (in case WDT triggered while CLKREQ goes low), we also
+	 * add in the additional latencies.
+	 */
+	if (!voltdm_for_each(_voltdm_sum_time, (void *)&reset_delay_time)) {
+		reset_delay_time += tstart + tshut;
+		val = _usec_to_val_scrm(rate32k, reset_delay_time,
+			OMAP4430_RSTTIME1_SHIFT, OMAP4430_RSTTIME1_MASK);
+		omap4_prminst_rmw_inst_reg_bits(OMAP4430_RSTTIME1_MASK, val,
+			OMAP4430_PRM_PARTITION, OMAP4430_PRM_DEVICE_INST,
+			OMAP4_PRM_RSTTIME_OFFSET);
 	}
 
+	/* Setup max PMIC startup time */
+	omap_pm_get_pmic_lp_time(&tstart, &tshut);
+	val = _usec_to_val_scrm(rate32k, tstart, OMAP4_WAKEUPTIME_SHIFT,
+			OMAP4_WAKEUPTIME_MASK);
+	val |= _usec_to_val_scrm(rate32k, tshut, OMAP4_SLEEPTIME_SHIFT,
+			OMAP4_SLEEPTIME_MASK);
+	omap4_prminst_write_inst_reg(val, OMAP4430_SCRM_PARTITION, 0x0,
+			OMAP4_SCRM_PMICSETUPTIME_OFFSET);
+
+no_32k:
 	/*
 	 * De-assert PWRREQ signal in Device OFF state
 	 *	0x3: PWRREQ is de-asserted if all voltage domain are in
@@ -865,16 +1023,6 @@ static void __init prcm_setup_regs(void)
 	omap4_prminst_write_inst_reg(0x3, OMAP4430_PRM_PARTITION,
 		OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_PWRREQCTRL_OFFSET);
 
-	/* Setup max PMIC startup time */
-	if (rate32k) {
-		omap_pm_get_pmic_lp_time(&tstart, &tshut);
-		val = _usec_to_val_scrm(rate32k, tstart, OMAP4_WAKEUPTIME_SHIFT,
-				OMAP4_WAKEUPTIME_MASK);
-		val |= _usec_to_val_scrm(rate32k, tshut, OMAP4_SLEEPTIME_SHIFT,
-				OMAP4_SLEEPTIME_MASK);
-		omap4_prminst_write_inst_reg(val, OMAP4430_SCRM_PARTITION, 0x0,
-				OMAP4_SCRM_PMICSETUPTIME_OFFSET);
-	}
 }
 
 
@@ -910,9 +1058,16 @@ void omap_pm_clear_dsp_wake_up(void)
 	}
 
 	ret = pwrdm_read_pwrst(tesla_pwrdm);
-	/* If Tesla power state in RET or OFF, then not hit by errata */
-	if (ret <= PWRDM_POWER_RET)
+	/*
+	 * If current Tesla power state is in RET/OFF and not in transition,
+	 * then not hit by errata.
+	 */
+	if (ret <= PWRDM_POWER_RET) {
+		if (!(omap4_prminst_read_inst_reg(tesla_pwrdm->prcm_partition,
+				tesla_pwrdm->prcm_offs, OMAP4_PM_PWSTST)
+				& OMAP_INTRANSITION_MASK))
 		return;
+	}
 
 	if (clkdm_wakeup(tesla_clkdm))
 		pr_err("%s: Failed to force wakeup of %s\n", __func__,
@@ -1082,6 +1237,11 @@ static void __init omap4_pm_setup_errata(void)
 	if (cpu_is_omap44xx())
 		pm44xx_errata |= OMAP4_PM_ERRATUM_IVA_AUTO_RET_iXXX |
 				 OMAP4_PM_ERRATUM_HSI_SWAKEUP_iXXX;
+	/* Dynamic Dependency errata for all silicon !=443x */
+	if (cpu_is_omap443x())
+		pm44xx_errata |= OMAP4_PM_ERRATUM_MPU_EMIF_NO_DYNDEP_i688;
+	else
+		pm44xx_errata |= OMAP4_PM_ERRATUM_MPU_EMIF_NO_DYNDEP_IDLE_iXXX;
 }
 
 /**
@@ -1093,7 +1253,7 @@ static void __init omap4_pm_setup_errata(void)
 static int __init omap4_pm_init(void)
 {
 	int ret = 0;
-	struct clockdomain *emif_clkdm, *mpuss_clkdm, *l3_1_clkdm;
+	struct clockdomain *l3_1_clkdm;
 	struct clockdomain *ducati_clkdm, *l3_2_clkdm, *l4_per, *l4_cfg;
 
 	if (!cpu_is_omap44xx())
@@ -1114,7 +1274,7 @@ static int __init omap4_pm_init(void)
 
 	ret = request_irq(OMAP44XX_IRQ_PRCM,
 			  (irq_handler_t)prcm_interrupt_handler,
-			  IRQF_DISABLED, "prcm", NULL);
+			  IRQF_NO_SUSPEND | IRQF_DISABLED, "prcm", NULL);
 	if (ret) {
 		printk(KERN_ERR "request_irq failed to register for 0x%x\n",
 		       OMAP44XX_IRQ_PRCM);
@@ -1152,8 +1312,11 @@ static int __init omap4_pm_init(void)
 		(!l3_2_clkdm) || (!ducati_clkdm) || (!l4_per) || (!l4_cfg))
 		goto err2;
 
-	if (cpu_is_omap443x()) {
+	/* if we cannot ever enable static dependency. */
+	if (is_pm44xx_erratum(MPU_EMIF_NO_DYNDEP_i688))
 		ret |= clkdm_add_wkdep(mpuss_clkdm, emif_clkdm);
+
+	if (cpu_is_omap443x()) {
 		ret |= clkdm_add_wkdep(mpuss_clkdm, l3_1_clkdm);
 		ret |= clkdm_add_wkdep(mpuss_clkdm, l3_2_clkdm);
 		ret |= clkdm_add_wkdep(ducati_clkdm, l3_1_clkdm);
@@ -1173,12 +1336,6 @@ static int __init omap4_pm_init(void)
 		pr_info("OMAP4 PM: Static dependency added between"
 			" DUCATI <-> L4_PER/CFG and DUCATI <-> L3.\n");
 	} else if (cpu_is_omap446x()) {
-		/*
-		 * Static dependency between mpuss and emif can only be
-		 * disabled if OSWR is disabled to avoid a HW bug that occurs
-		 * when mpuss enters OSWR
-		 */
-		/*ret |= clkdm_add_wkdep(mpuss_clkdm, emif_clkdm);*/
 		ret |= clkdm_add_wkdep(mpuss_clkdm, l4_per);
 		ret |= clkdm_add_wkdep(mpuss_clkdm, l4_cfg);
 

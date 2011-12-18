@@ -344,7 +344,7 @@ static int ehci_bus_resume (struct usb_hcd *hcd)
 	u32			temp;
 	u32			power_okay;
 	int			i;
-	u8			resume_needed = 0;
+	unsigned long		resume_needed = 0;
 
 	if (time_before (jiffies, ehci->next_statechange))
 		msleep(5);
@@ -417,7 +417,7 @@ static int ehci_bus_resume (struct usb_hcd *hcd)
 		if (test_bit(i, &ehci->bus_suspended) &&
 				(temp & PORT_SUSPEND)) {
 			temp |= PORT_RESUME;
-			resume_needed = 1;
+			set_bit(i, &resume_needed);
 		}
 		ehci_writel(ehci, temp, &ehci->regs->port_status [i]);
 	}
@@ -432,8 +432,7 @@ static int ehci_bus_resume (struct usb_hcd *hcd)
 	i = HCS_N_PORTS (ehci->hcs_params);
 	while (i--) {
 		temp = ehci_readl(ehci, &ehci->regs->port_status [i]);
-		if (test_bit(i, &ehci->bus_suspended) &&
-				(temp & PORT_SUSPEND)) {
+		if (test_bit(i, &resume_needed)) {
 			temp &= ~(PORT_RWC_BITS | PORT_RESUME);
 			ehci_writel(ehci, temp, &ehci->regs->port_status [i]);
 			ehci_vdbg (ehci, "resumed port %d\n", i + 1);
@@ -600,6 +599,13 @@ static int check_reset_complete (
 			ehci_dbg (ehci,
 				"Failed to enable port %d on root hub TT\n",
 				index+1);
+			return port_status;
+		}
+
+		if (ehci->no_companion_port_handoff) {
+			/* on omap, we can't hand off companion port */
+			ehci_dbg(ehci, "port %d FS device detected - cannot handoff port\n",
+				index + 1);
 			return port_status;
 		}
 
@@ -1033,9 +1039,19 @@ static int ehci_hub_control (
 						"port %d resume error %d\n",
 						wIndex + 1, retval);
 
+						if (ehci->has_smsc_ulpi_bug)
+							ehci->resume_error_flag = 1;
+
 						uhh_omap_reset_link(ehci);
 						goto error;
 				}
+
+				/* restore registers value to its original state*/
+				if (ehci->resume_error_flag) {
+					omap_ehci_ulpi_write(hcd, 0x00, 0x32, 20);
+					omap_ehci_ulpi_write(hcd, 0x04, 0x39, 20);
+				}
+
 				temp &= ~(PORT_SUSPEND|PORT_RESUME|(3<<10));
 			}
 		}
@@ -1159,6 +1175,16 @@ static int ehci_hub_control (
 			if ((temp & PORT_PE) == 0
 					|| (temp & PORT_RESET) != 0)
 				goto error;
+
+			/*
+			* Special workaround for resume error
+			*  - Write 04h to register 32h : inserts a 2uA source current on DP
+			*  - Write 14h to register 39h : enables 125kohm pull up resistors on DP
+			*/
+			if (ehci->resume_error_flag) {
+				omap_ehci_ulpi_write(hcd, 0x04, 0x32, 20);
+				omap_ehci_ulpi_write(hcd, 0x14, 0x39, 20);
+			}
 
 			/* After above check the port must be connected.
 			 * Set appropriate bit thus could put phy into low power

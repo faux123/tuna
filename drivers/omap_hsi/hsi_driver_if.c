@@ -329,8 +329,14 @@ int hsi_open(struct hsi_device *dev)
 	/* Restart with flags cleaned up */
 	ch->flags = HSI_CH_OPEN;
 
-	hsi_driver_enable_interrupt(port, HSI_CAWAKEDETECTED | HSI_ERROROCCURED
-					| HSI_BREAKDETECTED);
+	if (port->wake_rx_3_wires_mode)
+		hsi_driver_enable_interrupt(port, HSI_ERROROCCURED
+						| HSI_BREAKDETECTED);
+	else
+		hsi_driver_enable_interrupt(port, HSI_CAWAKEDETECTED
+						| HSI_ERROROCCURED
+						| HSI_BREAKDETECTED);
+
 
 	/* NOTE: error and break are port events and do not need to be
 	 * enabled for HSI extended enable register */
@@ -892,6 +898,10 @@ int hsi_ioctl(struct hsi_device *dev, unsigned int command, void *arg)
 		/* HW errata HSI-C1BUG00085 : go back to normal IDLE mode */
 		if (hsi_driver_device_is_hsi(to_platform_device(hsi_ctrl->dev)))
 			hsi_set_pm_default(hsi_ctrl);
+		/* Clean CA_WAKE status */
+		pport->cawake_status = -1;
+		hsi_outl(HSI_CAWAKEDETECTED, base,
+			 HSI_SYS_MPU_STATUS_REG(port, pport->n_irq));
 		hsi_driver_enable_interrupt(pport, HSI_CAWAKEDETECTED);
 		hsi_outl_and(HSI_SET_WAKE_3_WIRES_MASK,	base,
 			     HSI_SYS_SET_WAKE_REG(port));
@@ -1002,8 +1012,13 @@ void hsi_set_port_event_cb(struct hsi_device *dev,
 	spin_lock_bh(&hsi_ctrl->lock);
 	hsi_clocks_enable_channel(dev->device.parent, dev->ch->channel_number,
 				__func__);
-	hsi_driver_enable_interrupt(port, HSI_CAWAKEDETECTED | HSI_ERROROCCURED
-					| HSI_BREAKDETECTED);
+	if (port->wake_rx_3_wires_mode)
+		hsi_driver_enable_interrupt(port, HSI_ERROROCCURED
+						| HSI_BREAKDETECTED);
+	else
+		hsi_driver_enable_interrupt(port, HSI_CAWAKEDETECTED
+						| HSI_ERROROCCURED
+						| HSI_BREAKDETECTED);
 	hsi_clocks_disable_channel(dev->device.parent, dev->ch->channel_number,
 				__func__);
 	spin_unlock_bh(&hsi_ctrl->lock);

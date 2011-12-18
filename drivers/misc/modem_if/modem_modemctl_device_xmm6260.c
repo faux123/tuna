@@ -43,6 +43,8 @@ static int xmm6260_on(struct modem_ctl *mc)
 	gpio_set_value(mc->gpio_reset_req_n, 1);
 	udelay(160);
 	gpio_set_value(mc->gpio_cp_on, 1);
+	udelay(60);
+	gpio_set_value(mc->gpio_cp_on, 0);
 	msleep(20);
 	gpio_set_value(mc->gpio_pda_active, 1);
 
@@ -142,7 +144,8 @@ static irqreturn_t phone_active_irq_handler(int irq, void *_mc)
 		if (mc->iod && mc->iod->modem_state_changed)
 			mc->iod->modem_state_changed(mc->iod, phone_state);
 	} else if (phone_reset && !phone_active_value) {
-		if (mc->phone_state == STATE_ONLINE) {
+		if ((mc->phone_state == STATE_ONLINE) &&
+			(mc->iod->link->com_state == COM_ONLINE)) {
 			phone_state = STATE_CRASH_EXIT;
 			if (mc->iod && mc->iod->modem_state_changed)
 				mc->iod->modem_state_changed(mc->iod,

@@ -147,12 +147,14 @@ static const unsigned int adc_timing[] = {
 };
 
 static const char *device_names[] = {
-	[FSA9480_DETECT_NONE]		= "unknown/none",
-	[FSA9480_DETECT_USB]		= "usb-peripheral",
-	[FSA9480_DETECT_USB_HOST]	= "usb-host",
-	[FSA9480_DETECT_CHARGER]	= "charger",
-	[FSA9480_DETECT_JIG]		= "jig",
-	[FSA9480_DETECT_UART]		= "uart",
+	[FSA9480_DETECT_NONE]			= "unknown/none",
+	[FSA9480_DETECT_USB]			= "usb-peripheral",
+	[FSA9480_DETECT_USB_HOST]		= "usb-host",
+	[FSA9480_DETECT_CHARGER]		= "charger",
+	[FSA9480_DETECT_JIG]			= "jig",
+	[FSA9480_DETECT_UART]			= "uart",
+	[FSA9480_DETECT_AV_365K]		= "av-365k",
+	[FSA9480_DETECT_AV_365K_CHARGER]	= "av-365k-charger",
 };
 
 struct usbsw_nb_info {
@@ -171,14 +173,13 @@ struct fsa9480_usbsw {
 	u16				intr_mask;
 	u8				timing;
 	int				external_id_irq;
+	bool				wake_enabled;
 #if defined(CONFIG_DEBUG_FS) && defined(DEBUG_DUMP_REGISTERS)
 	struct dentry			*debug_dir;
 #endif
 
 	int				num_notifiers;
 	struct usbsw_nb_info		notifiers[0];
-
-	bool wake_enabled;
 };
 #define xceiv_to_fsa(x)		container_of((x), struct fsa9480_usbsw, otg)
 
@@ -544,9 +545,38 @@ static int fsa9480_detect_callback(struct otg_id_notifier_block *nb)
 		 * The FSA9480 takes a while pulling that line down, so a sleep
 		 * is needed.
 		 */
-		usleep_range(8500, 8600);
+		usleep_range(10000, 11000);
 		enable_irq(usbsw->external_id_irq);
 		return OTG_ID_HANDLED;
+	} else if (dev_type & DEV_AV) {
+		/* There are two ID resistances, 1K and 365K that the FSA9480
+		 * will resolve to the A/V Cable device type.  The ADC value can
+		 * be used to tell the difference between the two.
+		 */
+		if (adc_val == 0x1a) {
+			/* Delay to allow VBUS to be seen, if present. There's
+			 * a possibility that we won't charge if it takes
+			 * longer than this for VBUS to be present. */
+			msleep(10);
+			if ((nb_info->detect_set->mask &
+					FSA9480_DETECT_AV_365K_CHARGER) &&
+					usbsw->pdata->vbus_present()) {
+				_detected(usbsw,
+					FSA9480_DETECT_AV_365K_CHARGER);
+				/* The FSA9480 will not interrupt when a USB or
+				 * charger cable is disconnected from the dock
+				 * so we must detect loss of VBUS via an
+				 * external interrupt. */
+				enable_irq(usbsw->pdata->external_vbus_irq);
+			} else if ((nb_info->detect_set->mask &
+					FSA9480_DETECT_AV_365K) &&
+					!usbsw->pdata->vbus_present()) {
+				_detected(usbsw, FSA9480_DETECT_AV_365K);
+			} else {
+				goto unhandled;
+			}
+			goto handled;
+		}
 	} else if (dev_type == 0) {
 		usbsw->curr_dev = 0;
 		dev_info(&usbsw->client->dev,
@@ -579,6 +609,7 @@ handled:
 	       (prev_dev != FSA9480_DETECT_NONE));
 
 	mutex_unlock(&usbsw->lock);
+	enable_irq_wake(usbsw->client->irq);
 	enable_irq(usbsw->client->irq);
 
 	return OTG_ID_HANDLED;
@@ -593,6 +624,7 @@ static int fsa9480_proxy_wait_callback(struct otg_id_notifier_block *nb)
 	dev_info(&usbsw->client->dev, "taking proxy ownership of port\n");
 
 	usbsw->pdata->enable(true);
+	enable_irq_wake(usbsw->client->irq);
 	enable_irq(usbsw->client->irq);
 
 	return OTG_ID_HANDLED;
@@ -640,6 +672,7 @@ static irqreturn_t fsa9480_irq_thread(int irq, void *data)
 		dev_err(&client->dev, "exiting protection mode\n");
 
 	disable_irq_nosync(client->irq);
+	disable_irq_wake(client->irq);
 
 	mutex_lock(&usbsw->lock);
 	if (usbsw->curr_dev != FSA9480_DETECT_NONE) {
@@ -696,9 +729,32 @@ static irqreturn_t usb_id_irq_thread(int irq, void *data)
 		 */
 		fsa9480_reset(usbsw);
 
+		enable_irq_wake(client->irq);
 		enable_irq(client->irq);
 	}
 
+	mutex_unlock(&usbsw->lock);
+
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t vbus_irq_thread(int irq, void *data)
+{
+	struct fsa9480_usbsw *usbsw = data;
+
+	disable_irq_nosync(usbsw->pdata->external_vbus_irq);
+
+	mutex_lock(&usbsw->lock);
+	if (usbsw->curr_dev != FSA9480_DETECT_AV_365K_CHARGER) {
+		mutex_unlock(&usbsw->lock);
+		return IRQ_HANDLED;
+	}
+
+	/* VBUS has gone away when docked, so reset the state to
+	 * FSA_DETECT_NONE and reset the FSA9480, because it cannot
+	 * detect ID pin changes correctly after dock detach. */
+	_detected(usbsw, FSA9480_DETECT_NONE);
+	fsa9480_reset(usbsw);
 	mutex_unlock(&usbsw->lock);
 
 	return IRQ_HANDLED;
@@ -715,7 +771,10 @@ static int __devinit fsa9480_probe(struct i2c_client *client,
 
 	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_BYTE_DATA))
 		return -EIO;
-	if (!pdata || !pdata->detected || !pdata->enable) {
+	if (!pdata || !pdata->detected || !pdata->enable ||
+			!pdata->mask_vbus_irq || !pdata->unmask_vbus_irq ||
+			!pdata->vbus_present ||
+			(pdata->external_vbus_irq < 0)) {
 		dev_err(&client->dev, "missing/invalid platform data\n");
 		return -EINVAL;
 	}
@@ -751,6 +810,19 @@ static int __devinit fsa9480_probe(struct i2c_client *client,
 		}
 	}
 
+	pdata->mask_vbus_irq();
+	ret = request_threaded_irq(pdata->external_vbus_irq, NULL,
+			vbus_irq_thread, pdata->external_vbus_flags,
+			"external_vbus", usbsw);
+	if (ret) {
+		dev_err(&client->dev,
+				"failed to request vbus IRQ err %d\n",
+				ret);
+		goto err_req_vbus_irq;
+	}
+	disable_irq(pdata->external_vbus_irq);
+	pdata->unmask_vbus_irq();
+
 	/* mask all irqs to prevent event processing between
 	 * request_irq and disable_irq
 	 */
@@ -773,6 +845,7 @@ static int __devinit fsa9480_probe(struct i2c_client *client,
 			"failed to enable wakeup src %d\n", ret);
 		goto err_en_wake;
 	}
+	disable_irq_wake(client->irq);
 
 	/* Reconcile the requested ADC detect time with the available settings
 	 * on the FSA9480.
@@ -842,12 +915,12 @@ err_sys_create:
 err_reset:
 err_timing:
 err_reg_init:
-	if (client->irq)
-		disable_irq_wake(client->irq);
 err_en_wake:
 	if (client->irq)
 		free_irq(client->irq, usbsw);
 err_req_irq:
+	free_irq(usbsw->pdata->external_vbus_irq, usbsw);
+err_req_vbus_irq:
 	if (usbsw->pdata->external_id >= 0)
 		free_irq(usbsw->external_id_irq, usbsw);
 err_req_id_irq:
@@ -886,6 +959,8 @@ static int __devexit fsa9480_remove(struct i2c_client *client)
 		free_irq(usbsw->external_id_irq, usbsw);
 		gpio_free(usbsw->pdata->external_id);
 	}
+
+	free_irq(usbsw->pdata->external_vbus_irq, usbsw);
 
 	i2c_set_clientdata(client, NULL);
 

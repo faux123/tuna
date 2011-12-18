@@ -128,6 +128,8 @@ static const char const *omap4_tuna_hw_name_toro[] = {
 	[0x03] = "Toro 4th Sample",
 	[0x05] = "Toro 5th Sample",
 	[0x06] = "Toro 8th Sample",
+	[0x08] = "Toro 8th Sample",
+	[0x09] = "Toro 8-1th Sample",
 };
 
 int omap4_tuna_get_revision(void)
@@ -278,46 +280,41 @@ static struct platform_device tuna_gpio_i2c5_device = {
 	}
 };
 
+#define PHYS_ADDR_SMC_SIZE			(SZ_1M * 3)
+#define PHYS_ADDR_DUCATI_SIZE			(SZ_1M * 105)
 #define OMAP_TUNA_ION_HEAP_SECURE_INPUT_SIZE	(SZ_1M * 90)
-#define OMAP_TUNA_ION_HEAP_TILER_SIZE		(SZ_128M - SZ_32M)
-#define OMAP_TUNA_ION_HEAP_NONSECURE_TILER_SIZE	SZ_32M
-#define OMAP_TUNA_ION_HEAP_LARGE_SURFACES_SIZE	SZ_32M
-#define PHYS_ADDR_SMC_SIZE	(SZ_1M * 3)
+#define OMAP_TUNA_ION_HEAP_TILER_SIZE		(SZ_1M * 81)
+#define OMAP_TUNA_ION_HEAP_NONSECURE_TILER_SIZE	(SZ_1M * 15)
+
 #define PHYS_ADDR_SMC_MEM	(0x80000000 + SZ_1G - PHYS_ADDR_SMC_SIZE)
-#define PHYS_ADDR_DUCATI_SIZE	(SZ_1M * 105)
-#define PHYS_ADDR_DUCATI_MEM	(PHYS_ADDR_SMC_MEM - PHYS_ADDR_DUCATI_SIZE -\
-				OMAP_TUNA_ION_HEAP_SECURE_INPUT_SIZE)
+#define PHYS_ADDR_DUCATI_MEM	(PHYS_ADDR_SMC_MEM - \
+				 PHYS_ADDR_DUCATI_SIZE - \
+				 OMAP_TUNA_ION_HEAP_SECURE_INPUT_SIZE)
 
 static struct ion_platform_data tuna_ion_data = {
-	.nr = 4,
+	.nr = 3,
 	.heaps = {
 		{
 			.type = ION_HEAP_TYPE_CARVEOUT,
-			.id = OMAP_ION_HEAP_SECURE_INPUT,
+			.id   = OMAP_ION_HEAP_SECURE_INPUT,
 			.name = "secure_input",
 			.base = PHYS_ADDR_SMC_MEM -
 					OMAP_TUNA_ION_HEAP_SECURE_INPUT_SIZE,
 			.size = OMAP_TUNA_ION_HEAP_SECURE_INPUT_SIZE,
 		},
 		{	.type = OMAP_ION_HEAP_TYPE_TILER,
-			.id = OMAP_ION_HEAP_TILER,
+			.id   = OMAP_ION_HEAP_TILER,
 			.name = "tiler",
 			.base = PHYS_ADDR_DUCATI_MEM -
 					OMAP_TUNA_ION_HEAP_TILER_SIZE,
 			.size = OMAP_TUNA_ION_HEAP_TILER_SIZE,
 		},
-		{
-			.type = ION_HEAP_TYPE_CARVEOUT,
-			.id = OMAP_ION_HEAP_LARGE_SURFACES,
-			.name = "large_surfaces",
-			.base = 0x80000000 + SZ_512M + SZ_2M,
-			.size = OMAP_TUNA_ION_HEAP_LARGE_SURFACES_SIZE,
-		},
 		{	.type = OMAP_ION_HEAP_TYPE_TILER,
-			.id = OMAP_ION_HEAP_NONSECURE_TILER,
+			.id   = OMAP_ION_HEAP_NONSECURE_TILER,
 			.name = "nonsecure_tiler",
-			.base = 0x80000000 + SZ_512M + SZ_2M +
-				OMAP_TUNA_ION_HEAP_LARGE_SURFACES_SIZE,
+			.base = PHYS_ADDR_DUCATI_MEM -
+					OMAP_TUNA_ION_HEAP_TILER_SIZE -
+					OMAP_TUNA_ION_HEAP_NONSECURE_TILER_SIZE,
 			.size = OMAP_TUNA_ION_HEAP_NONSECURE_TILER_SIZE,
 		},
 	},
@@ -331,11 +328,6 @@ static struct platform_device tuna_ion_device = {
 	},
 };
 
-static struct platform_device tuna_mcasp_device = {
-	.name		= "omap-mcasp-dai",
-	.id		= 0,
-};
-
 static struct platform_device tuna_spdif_dit_device = {
 	.name		= "spdif-dit",
 	.id		= 0,
@@ -347,7 +339,6 @@ static struct platform_device *tuna_devices[] __initdata = {
 	&twl6030_madc_device,
 	&tuna_ion_device,
 	&tuna_gpio_i2c5_device,
-	&tuna_mcasp_device,
 	&tuna_spdif_dit_device,
 };
 
@@ -523,6 +514,10 @@ static struct regulator_init_data tuna_vaux2 = {
 		.valid_ops_mask	 = REGULATOR_CHANGE_VOLTAGE
 					| REGULATOR_CHANGE_MODE
 					| REGULATOR_CHANGE_STATUS,
+		.state_mem = {
+			.disabled	= true,
+		},
+		.initial_state		= PM_SUSPEND_MEM,
 	},
 };
 
@@ -572,6 +567,10 @@ static struct regulator_init_data tuna_vpp = {
 		.valid_ops_mask	 = REGULATOR_CHANGE_VOLTAGE
 					| REGULATOR_CHANGE_MODE
 					| REGULATOR_CHANGE_STATUS,
+		.state_mem = {
+			.disabled	= true,
+		},
+		.initial_state		= PM_SUSPEND_MEM,
 	},
 };
 
@@ -617,7 +616,7 @@ static struct regulator_init_data tuna_vcxio = {
 		.max_uV			= 1800000,
 		.valid_modes_mask	= REGULATOR_MODE_NORMAL
 					| REGULATOR_MODE_STANDBY,
-		.valid_ops_mask	 = REGULATOR_CHANGE_MODE
+		.valid_ops_mask		= REGULATOR_CHANGE_MODE
 					| REGULATOR_CHANGE_STATUS,
 	},
 	.num_consumer_supplies	= ARRAY_SIZE(tuna_vcxio_supply),
@@ -656,6 +655,10 @@ static struct regulator_init_data tuna_vusb = {
 					| REGULATOR_MODE_STANDBY,
 		.valid_ops_mask	 =	REGULATOR_CHANGE_MODE
 					| REGULATOR_CHANGE_STATUS,
+		.state_mem = {
+			.disabled	= true,
+		},
+		.initial_state		= PM_SUSPEND_MEM,
 	},
 	.num_consumer_supplies	= ARRAY_SIZE(tuna_vusb_supply),
 	.consumer_supplies	= tuna_vusb_supply,
@@ -691,6 +694,10 @@ static struct regulator_init_data tuna_clk32kaudio = {
 static struct regulator_init_data tuna_vdd3 = {
 	.constraints = {
 		.valid_ops_mask		= REGULATOR_CHANGE_STATUS,
+		.state_mem = {
+			.disabled	= true,
+		},
+		.initial_state		= PM_SUSPEND_MEM,
 	},
 };
 
@@ -701,6 +708,10 @@ static struct regulator_init_data tuna_vdd3 = {
 static struct regulator_init_data tuna_vmem = {
 	.constraints = {
 		.valid_ops_mask		= REGULATOR_CHANGE_STATUS,
+		.state_mem = {
+			.disabled	= true,
+		},
+		.initial_state		= PM_SUSPEND_MEM,
 	},
 };
 

@@ -648,7 +648,6 @@ static void usbhs_omap_tll_init(struct device *dev, u8 tll_channel_count)
 				| OMAP_TLL_CHANNEL_CONF_ULPINOBITSTUFF
 				| OMAP_TLL_CHANNEL_CONF_ULPIDDRMODE);
 
-			reg |= (1 << (i + 1));
 		} else
 			continue;
 
@@ -762,8 +761,10 @@ static void omap_usbhs_init(struct device *dev)
 	/* setup ULPI bypass and burst configurations */
 	reg |= (OMAP_UHH_HOSTCONFIG_INCR4_BURST_EN
 			| OMAP_UHH_HOSTCONFIG_INCR8_BURST_EN
-			| OMAP_UHH_HOSTCONFIG_INCR16_BURST_EN
-			| OMAP_UHH_HOSTCONFIG_INCRX_ALIGN_EN);
+			| OMAP_UHH_HOSTCONFIG_INCR16_BURST_EN);
+
+	/* Keep ENA_INCR_ALIGN = 0: Known to cause OCP delays */
+	reg &= ~OMAP_UHH_HOSTCONFIG_INCRX_ALIGN_EN;
 
 	if (is_omap_usbhs_rev1(omap)) {
 		if (pdata->port_mode[0] == OMAP_USBHS_PORT_MODE_UNUSED)

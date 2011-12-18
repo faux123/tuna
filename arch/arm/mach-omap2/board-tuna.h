@@ -24,6 +24,11 @@
 
 #define TUNA_GPIO_HDMI_HPD	63
 
+#define TUNA_OTG_ID_POGO_PRIO		INT_MIN
+#define TUNA_OTG_ID_FSA9480_PRIO	(INT_MIN + 1)
+#define TUNA_OTG_ID_SII9234_PRIO	(INT_MIN + 2)
+#define TUNA_OTG_ID_FSA9480_LAST_PRIO	INT_MAX
+
 int omap4_tuna_get_revision(void);
 int omap4_tuna_get_type(void);
 bool omap4_tuna_final_gpios(void);
@@ -41,7 +46,13 @@ void omap4_tuna_emif_init(void);
 void omap4_ehci_init(void);
 void modem_toro_init(void);
 
-void tuna_otg_pogo_charger(bool on);
+enum pogo_power_state {
+	POGO_POWER_DISCONNECTED,
+	POGO_POWER_CHARGER,
+	POGO_POWER_HOST,
+};
+void tuna_otg_pogo_charger(enum pogo_power_state);
+void tuna_otg_set_dock_switch(int enable);
 
 extern struct mmc_platform_data tuna_wifi_data;
 extern struct class *sec_class;
