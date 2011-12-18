@@ -366,6 +366,12 @@ config OMAP_ALLOW_OSWR
 	  Which means the Logic of power domains can be lost now
 	  unlike the CSWR wherein the logic is retained
 
+config PRE_UNDERVOLT
+	bool "Enable CPU compiled time undervolting on OMAP"
+	default n
+	help
+	  Enable CPU compiled time undervolting on OMAP
+
 config CPU_OVERCLOCK
 	bool "Enable CPU Overclocking on OMAP"
 	default n
