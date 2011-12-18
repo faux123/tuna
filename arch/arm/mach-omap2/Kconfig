@@ -366,6 +366,12 @@ config OMAP_ALLOW_OSWR
 	  Which means the Logic of power domains can be lost now
 	  unlike the CSWR wherein the logic is retained
 
+config CPU_OVERCLOCK
+	bool "Enable CPU Overclocking on OMAP"
+	default n
+	help
+	  Enables CPU Overclocking on OMAP
+
 config OMAP_FIQ_DEBUGGER
 	bool "Enable the serial FIQ debugger on OMAP"
 	default y

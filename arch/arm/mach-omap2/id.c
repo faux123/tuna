@@ -247,6 +247,9 @@ static void __init omap4_check_features(void)
 		case 1:
 		default:
 			/* Standard device */
+#ifdef CONFIG_CPU_OVERCLOCK
+			omap4_features |= OMAP4_HAS_MPU_1_5GHZ;
+#endif
 			omap4_features |= OMAP4_HAS_MPU_1_2GHZ;
 			break;
 		}
