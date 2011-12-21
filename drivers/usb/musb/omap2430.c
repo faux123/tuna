@@ -439,6 +439,7 @@ static void omap2430_musb_disable(struct musb *musb)
 
 static int omap2430_musb_exit(struct musb *musb)
 {
+	pm_runtime_put(musb->controller);
 	del_timer_sync(&musb_idle_timer);
 
 	otg_unregister_notifier(musb->xceiv, &musb->nb);
