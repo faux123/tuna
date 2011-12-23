@@ -378,7 +378,7 @@ static inline void mem_cgroup_replace_page_cache(struct page *oldpage,
 {
 }
 
-static inline void mem_cgroup_reset_owner(struct page *page);
+static inline void mem_cgroup_reset_owner(struct page *page)
 {
 }
 #endif /* CONFIG_CGROUP_MEM_CONT */
