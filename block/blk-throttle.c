@@ -158,7 +158,7 @@ static void throtl_free_tg(struct rcu_head *head)
 	struct throtl_grp *tg;
 
 	tg = container_of(head, struct throtl_grp, rcu_head);
-	free_percpu(tg->blkg.stats_cpu);
+	percpu_mempool_free(tg->blkg.stats_cpu, blkg_stats_cpu_pool);
 	kfree(tg);
 }
 

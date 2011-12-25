@@ -1187,7 +1187,7 @@ static void cfq_put_cfqg(struct cfq_group *cfqg)
 		return;
 	for_each_cfqg_st(cfqg, i, j, st)
 		BUG_ON(!RB_EMPTY_ROOT(&st->rb));
-	free_percpu(cfqg->blkg.stats_cpu);
+	percpu_mempool_free(cfqg->blkg.stats_cpu, blkg_stats_cpu_pool);
 	kfree(cfqg);
 }
 

@@ -17,16 +17,32 @@
 #include <linux/err.h>
 #include <linux/blkdev.h>
 #include <linux/slab.h>
+#include <linux/mempool.h>
 #include "blk-cgroup.h"
 #include <linux/genhd.h>
 
 #define MAX_KEY_LEN 100
+
+/*
+ * blkg_stats_cpu_pool parameters.  These allocations aren't frequent, can
+ * be opportunistic and percpu memory is expensive.
+ */
+#define BLKG_STATS_CPU_POOL_SIZE	8
+#define BLKG_STATS_CPU_POOL_REFILL	4
 
 static DEFINE_SPINLOCK(blkio_list_lock);
 static LIST_HEAD(blkio_list);
 
 struct blkio_cgroup blkio_root_cgroup = { .weight = 2*BLKIO_WEIGHT_DEFAULT };
 EXPORT_SYMBOL_GPL(blkio_root_cgroup);
+
+/*
+ * Percpu mempool for blkgio_group_stats_cpu which are allocated on-demand
+ * on IO path.  As percpu doesn't support NOIO allocations, we need to
+ * buffer them through mempool.
+ */
+struct percpu_mempool *blkg_stats_cpu_pool;
+EXPORT_SYMBOL_GPL(blkg_stats_cpu_pool);
 
 static struct cgroup_subsys_state *blkiocg_create(struct cgroup_subsys *,
 						  struct cgroup *);
@@ -469,8 +485,13 @@ EXPORT_SYMBOL_GPL(blkiocg_update_io_merged_stats);
  */
 int blkio_alloc_blkg_stats(struct blkio_group *blkg)
 {
+	/* Schedule refill if necessary */
+	if (percpu_mempool_nr_elems(blkg_stats_cpu_pool) <=
+	    BLKG_STATS_CPU_POOL_REFILL)
+		percpu_mempool_refill(blkg_stats_cpu_pool, GFP_NOWAIT);
+
 	/* Allocate memory for per cpu stats */
-	blkg->stats_cpu = alloc_percpu(struct blkio_group_stats_cpu);
+	blkg->stats_cpu = percpu_mempool_alloc(blkg_stats_cpu_pool, GFP_NOWAIT);
 	if (!blkg->stats_cpu)
 		return -ENOMEM;
 	return 0;
@@ -1653,12 +1674,24 @@ EXPORT_SYMBOL_GPL(blkio_policy_unregister);
 
 static int __init init_cgroup_blkio(void)
 {
-	return cgroup_load_subsys(&blkio_subsys);
+	int ret;
+
+	blkg_stats_cpu_pool = percpu_mempool_create(BLKG_STATS_CPU_POOL_SIZE,
+				sizeof(struct blkio_group_stats_cpu),
+				__alignof__(struct blkio_group_stats_cpu));
+	if (!blkg_stats_cpu_pool)
+		return -ENOMEM;
+
+	ret = cgroup_load_subsys(&blkio_subsys);
+	if (ret)
+		percpu_mempool_destroy(blkg_stats_cpu_pool);
+	return ret;
 }
 
 static void __exit exit_cgroup_blkio(void)
 {
 	cgroup_unload_subsys(&blkio_subsys);
+	percpu_mempool_destroy(blkg_stats_cpu_pool);
 }
 
 module_init(init_cgroup_blkio);
