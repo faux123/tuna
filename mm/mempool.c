@@ -14,6 +14,7 @@
 #include <linux/mempool.h>
 #include <linux/blkdev.h>
 #include <linux/writeback.h>
+#include <linux/percpu.h>
 
 static void add_element(mempool_t *pool, void *element)
 {
@@ -398,3 +399,113 @@ void mempool_free_pages(void *element, void *pool_data)
 	__free_pages(element, order);
 }
 EXPORT_SYMBOL(mempool_free_pages);
+
+/*
+ * Mempool for percpu memory.
+ */
+static void *percpu_mempool_alloc_fn(gfp_t gfp_mask, void *data)
+{
+	struct percpu_mempool *pcpu_pool = data;
+	void __percpu *p;
+
+	/*
+	 * Percpu allocator doesn't do NOIO.  This makes percpu mempool
+	 * always try reserved elements first, which isn't such a bad idea
+	 * given that percpu allocator is pretty heavy and percpu areas are
+	 * expensive.
+	 */
+	if ((gfp_mask & GFP_KERNEL) != GFP_KERNEL)
+		return NULL;
+
+	p = __alloc_percpu(pcpu_pool->size, pcpu_pool->align);
+	return (void __kernel __force *)p;
+}
+
+static void percpu_mempool_free_fn(void *elem, void *data)
+{
+	void __percpu *p = (void __percpu __force *)elem;
+
+	free_percpu(p);
+}
+
+static void percpu_mempool_refill_workfn(struct work_struct *work)
+{
+	struct percpu_mempool *pcpu_pool =
+		container_of(work, struct percpu_mempool, refill_work);
+
+	percpu_mempool_refill(pcpu_pool, GFP_KERNEL);
+}
+
+/**
+ * percpu_mempool_create - create mempool for percpu memory
+ * @min_nr:	the minimum number of elements guaranteed to be
+ *		allocated for this pool.
+ * @size:	size of percpu memory areas in this pool
+ * @align:	alignment of percpu memory areas in this pool
+ *
+ * This is counterpart of mempool_create() for percpu memory areas.
+ * Allocations from the pool will return @size bytes percpu memory areas
+ * aligned at @align bytes.
+ */
+struct percpu_mempool *percpu_mempool_create(int min_nr, size_t size,
+					     size_t align)
+{
+	struct percpu_mempool *pcpu_pool;
+	mempool_t *pool;
+
+	BUILD_BUG_ON(offsetof(struct percpu_mempool, pool));
+
+	pool = __mempool_create(min_nr, percpu_mempool_alloc_fn,
+				percpu_mempool_free_fn, NULL, NUMA_NO_NODE,
+				sizeof(*pcpu_pool));
+	if (!pool)
+		return NULL;
+
+	/* fill in pcpu_pool part and set pool_data to self */
+	pcpu_pool = container_of(pool, struct percpu_mempool, pool);
+	pcpu_pool->size = size;
+	pcpu_pool->align = align;
+	INIT_WORK(&pcpu_pool->refill_work, percpu_mempool_refill_workfn);
+	pcpu_pool->pool.pool_data = pcpu_pool;
+
+	/* Pre-allocate the guaranteed number of buffers */
+	if (mempool_fill(&pcpu_pool->pool, GFP_KERNEL)) {
+		mempool_destroy(&pcpu_pool->pool);
+		return NULL;
+	}
+
+	return pcpu_pool;
+}
+EXPORT_SYMBOL_GPL(percpu_mempool_create);
+
+/**
+ * percpu_mempool_refill - refill a percpu mempool
+ * @pcpu_pool:	percpu mempool to refill
+ * @gfp_mask:	allocation mask to use
+ *
+ * Refill @pcpu_pool upto the configured min_nr using @gfp_mask.
+ *
+ * Percpu memory allocation depends on %GFP_KERNEL.  If @gfp_mask doesn't
+ * contain it, this function will schedule a work item to refill the pool
+ * and return -%EAGAIN indicating refilling is in progress.
+ */
+int percpu_mempool_refill(struct percpu_mempool *pcpu_pool, gfp_t gfp_mask)
+{
+	if ((gfp_mask & GFP_KERNEL) == GFP_KERNEL)
+		return mempool_fill(&pcpu_pool->pool, gfp_mask);
+
+	schedule_work(&pcpu_pool->refill_work);
+	return -EAGAIN;
+}
+EXPORT_SYMBOL_GPL(percpu_mempool_refill);
+
+/**
+ * percpu_mempool_destroy - destroy a percpu mempool
+ * @pcpu_pool:	percpu mempool to destroy
+ */
+void percpu_mempool_destroy(struct percpu_mempool *pcpu_pool)
+{
+	cancel_work_sync(&pcpu_pool->refill_work);
+	mempool_destroy(&pcpu_pool->pool);
+}
+EXPORT_SYMBOL_GPL(percpu_mempool_destroy);
