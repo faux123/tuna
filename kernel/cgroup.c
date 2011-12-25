@@ -1759,7 +1759,6 @@ static int cgroup_task_migrate(struct cgroup *cgrp, struct cgroup *oldcgrp,
 	 */
 	task_lock(tsk);
 	oldcg = tsk->cgroups;
-	get_css_set(oldcg);
 	task_unlock(tsk);
 
 	/* locate or allocate a new css_set for this task. */
@@ -1775,12 +1774,9 @@ static int cgroup_task_migrate(struct cgroup *cgrp, struct cgroup *oldcgrp,
 		might_sleep();
 		/* find_css_set will give us newcg already referenced. */
 		newcg = find_css_set(oldcg, cgrp);
-		if (!newcg) {
-			put_css_set(oldcg);
+		if (!newcg)
 			return -ENOMEM;
-		}
 	}
-	put_css_set(oldcg);
 
 	/* @tsk can't exit as its threadgroup is locked */
 	task_lock(tsk);
@@ -1932,9 +1928,8 @@ struct cg_list_entry {
 	struct list_head links;
 };
 
-static bool css_set_check_fetched(struct cgroup *cgrp,
-				  struct task_struct *tsk, struct css_set *cg,
-				  struct list_head *newcg_list)
+static bool css_set_fetched(struct cgroup *cgrp, struct task_struct *tsk,
+			    struct css_set *cg, struct list_head *newcg_list)
 {
 	struct css_set *newcg;
 	struct cg_list_entry *cg_entry;
@@ -2104,19 +2099,11 @@ int cgroup_attach_proc(struct cgroup *cgrp, struct task_struct *leader)
 		/* get old css_set pointer */
 		task_lock(tsk);
 		oldcg = tsk->cgroups;
-		get_css_set(oldcg);
 		task_unlock(tsk);
-		/* see if the new one for us is already in the list? */
-		if (css_set_check_fetched(cgrp, tsk, oldcg, &newcg_list)) {
-			/* was already there, nothing to do. */
-			put_css_set(oldcg);
-		} else {
-			/* we don't already have it. get new one. */
-			retval = css_set_prefetch(cgrp, oldcg, &newcg_list);
-			put_css_set(oldcg);
-			if (retval)
+		/* if we don't already have it in the list get a new one */
+		if (!css_set_fetched(cgrp, tsk, oldcg, &newcg_list))
+			if (css_set_prefetch(cgrp, oldcg, &newcg_list))
 				goto out_list_teardown;
-		}
 	}
 
 	/*
