@@ -47,6 +47,43 @@ void mempool_destroy(mempool_t *pool)
 EXPORT_SYMBOL(mempool_destroy);
 
 /**
+ * mempool_fill - fill a memory pool
+ * @pool:	memory pool to fill
+ * @gfp_mask:	allocation mask to use
+ *
+ * Allocate new elements with @gfp_mask and fill @pool so that it has
+ * @pool->min_nr elements.  Returns 0 on success, -errno on failure.
+ */
+static int mempool_fill(mempool_t *pool, gfp_t gfp_mask)
+{
+	/*
+	 * If curr_nr == min_nr is visible, we're correct regardless of
+	 * locking.
+	 */
+	while (pool->curr_nr < pool->min_nr) {
+		void *elem;
+		unsigned long flags;
+
+		elem = pool->alloc(gfp_mask, pool->pool_data);
+		if (unlikely(!elem))
+			return -ENOMEM;
+
+		spin_lock_irqsave(&pool->lock, flags);
+		if (pool->curr_nr < pool->min_nr) {
+			add_element(pool, elem);
+			elem = NULL;
+		}
+		spin_unlock_irqrestore(&pool->lock, flags);
+
+		if (elem) {
+			pool->free(elem, pool->pool_data);
+			return 0;
+		}
+	}
+	return 0;
+}
+
+/**
  * mempool_create - create a memory pool
  * @min_nr:    the minimum number of elements guaranteed to be
  *             allocated for this pool.
@@ -90,16 +127,11 @@ mempool_t *mempool_create_node(int min_nr, mempool_alloc_t *alloc_fn,
 	/*
 	 * First pre-allocate the guaranteed number of buffers.
 	 */
-	while (pool->curr_nr < pool->min_nr) {
-		void *element;
-
-		element = pool->alloc(GFP_KERNEL, pool->pool_data);
-		if (unlikely(!element)) {
-			mempool_destroy(pool);
-			return NULL;
-		}
-		add_element(pool, element);
+	if (mempool_fill(pool, GFP_KERNEL)) {
+		mempool_destroy(pool);
+		return NULL;
 	}
+
 	return pool;
 }
 EXPORT_SYMBOL(mempool_create_node);
@@ -137,7 +169,8 @@ int mempool_resize(mempool_t *pool, int new_min_nr, gfp_t gfp_mask)
 			spin_lock_irqsave(&pool->lock, flags);
 		}
 		pool->min_nr = new_min_nr;
-		goto out_unlock;
+		spin_unlock_irqrestore(&pool->lock, flags);
+		return 0;
 	}
 	spin_unlock_irqrestore(&pool->lock, flags);
 
@@ -151,31 +184,17 @@ int mempool_resize(mempool_t *pool, int new_min_nr, gfp_t gfp_mask)
 		/* Raced, other resize will do our work */
 		spin_unlock_irqrestore(&pool->lock, flags);
 		kfree(new_elements);
-		goto out;
+		return 0;
 	}
 	memcpy(new_elements, pool->elements,
 			pool->curr_nr * sizeof(*new_elements));
 	kfree(pool->elements);
 	pool->elements = new_elements;
 	pool->min_nr = new_min_nr;
-
-	while (pool->curr_nr < pool->min_nr) {
-		spin_unlock_irqrestore(&pool->lock, flags);
-		element = pool->alloc(gfp_mask, pool->pool_data);
-		if (!element)
-			goto out;
-		spin_lock_irqsave(&pool->lock, flags);
-		if (pool->curr_nr < pool->min_nr) {
-			add_element(pool, element);
-		} else {
-			spin_unlock_irqrestore(&pool->lock, flags);
-			pool->free(element, pool->pool_data);	/* Raced */
-			goto out;
-		}
-	}
-out_unlock:
 	spin_unlock_irqrestore(&pool->lock, flags);
-out:
+
+	mempool_fill(pool, gfp_mask);
+
 	return 0;
 }
 EXPORT_SYMBOL(mempool_resize);
