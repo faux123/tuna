@@ -17,9 +17,8 @@
 #include <linux/device.h>
 #include <linux/cpufreq.h>
 #include <linux/clk.h>
-#include <linux/pm_qos_params.h>
 #include <linux/opp.h>
-#include <linux/pm_qos_params.h>
+#include <linux/pm_qos.h>
 
 /*
  * agent_id values for use with omap_pm_set_min_bus_tput():

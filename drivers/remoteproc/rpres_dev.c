@@ -19,7 +19,7 @@
 #include <plat/omap_hwmod.h>
 #include <plat/clock.h>
 #include <plat/rpres.h>
-#include <linux/pm_qos_params.h>
+#include <linux/pm_qos.h>
 #include <plat/common.h>
 #include <plat/omap-pm.h>
 #include "../../arch/arm/mach-omap2/dvfs.h"

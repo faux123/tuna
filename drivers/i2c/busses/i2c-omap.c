@@ -40,7 +40,7 @@
 #include <linux/slab.h>
 #include <linux/i2c-omap.h>
 #include <linux/pm_runtime.h>
-#include <linux/pm_qos_params.h>
+#include <linux/pm_qos.h>
 
 #ifdef CONFIG_ARCH_OMAP4
 #include "../../../arch/arm/mach-omap2/cm2_44xx.h"
