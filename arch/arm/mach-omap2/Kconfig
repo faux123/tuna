@@ -378,6 +378,12 @@ config CPU_OVERCLOCK
 	help
 	  Enables CPU Overclocking on OMAP
 
+config GPU_OVERCLOCK
+	bool "Enable GPU Overclocking on OMAP"
+	default n
+	help
+	  Enables CPU Overclocking on OMAP
+
 config OMAP_FIQ_DEBUGGER
 	bool "Enable the serial FIQ debugger on OMAP"
 	default y
