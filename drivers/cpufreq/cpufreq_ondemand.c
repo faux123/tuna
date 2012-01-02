@@ -22,6 +22,9 @@
 #include <linux/tick.h>
 #include <linux/ktime.h>
 #include <linux/sched.h>
+#ifdef CONFIG_HAS_EARLYSUSPEND
+#include <linux/earlysuspend.h>
+#endif
 
 /*
  * dbs is used in this file as a shortform for demandbased switching
@@ -59,6 +62,11 @@ static unsigned int min_sampling_rate;
 static void do_dbs_timer(struct work_struct *work);
 static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 				unsigned int event);
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
+static struct early_suspend cpufreq_gov_early_suspend;
+static unsigned int cpufreq_gov_lcd_status;
+#endif
 
 #ifndef CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND
 static
@@ -556,7 +564,9 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 		}
 		if (dbs_tuners_ins.two_phase_freq != 0 && phase == 0) {
 			/* idle phase */
-			dbs_freq_increase(policy, dbs_tuners_ins.two_phase_freq);
+			dbs_freq_increase(policy,
+				(((dbs_tuners_ins.two_phase_freq)> (int)(policy->max*80/100))
+					?(dbs_tuners_ins.two_phase_freq) : (int)(policy->max*80/100))  );
 		} else {
 			/* busy phase */
 			if (policy->cur < policy->max)
@@ -574,6 +584,25 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 			/* change to idle phase */
 			phase = 0;
 		}
+	}
+#endif
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	/* should we enable auxillary CPUs? */
+	/* only master CPU is alive and Screen is ON */
+	if (num_online_cpus() < 2 && cpufreq_gov_lcd_status == 1) {
+		mutex_unlock(&this_dbs_info->timer_mutex);
+		/* hot-plug enable 2nd CPU */
+		cpu_up(1);
+		mutex_lock(&this_dbs_info->timer_mutex);
+		printk("OnDemand - Screen ON Hot-plug!\n");
+	/* Both CPUs are up and Screen is OFF */
+	} else if (num_online_cpus() > 1 && cpufreq_gov_lcd_status == 0) {
+		mutex_unlock(&this_dbs_info->timer_mutex);
+		/* hot-unplug 2nd CPU */
+		cpu_down(1);
+		printk("OnDemand - Screen OFF Hot-unplug!\n");
+		mutex_lock(&this_dbs_info->timer_mutex);
 	}
 #endif
 
@@ -785,6 +814,18 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 	return 0;
 }
 
+#ifdef CONFIG_HAS_EARLYSUSPEND
+static void cpufreq_gov_suspend(struct early_suspend *h)
+{
+	cpufreq_gov_lcd_status = 0;
+}
+
+static void cpufreq_gov_resume(struct early_suspend *h)
+{
+	cpufreq_gov_lcd_status = 1;
+}
+#endif
+
 static int __init cpufreq_gov_dbs_init(void)
 {
 	cputime64_t wall;
@@ -809,6 +850,16 @@ static int __init cpufreq_gov_dbs_init(void)
 		min_sampling_rate =
 			MIN_SAMPLING_RATE_RATIO * jiffies_to_usecs(10);
 	}
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	cpufreq_gov_lcd_status = 1;
+
+	cpufreq_gov_early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
+
+	cpufreq_gov_early_suspend.suspend = cpufreq_gov_suspend;
+	cpufreq_gov_early_suspend.resume = cpufreq_gov_resume;
+	register_early_suspend(&cpufreq_gov_early_suspend);
+#endif
 
 	return cpufreq_register_governor(&cpufreq_gov_ondemand);
 }
