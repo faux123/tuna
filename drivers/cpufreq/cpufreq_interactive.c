@@ -29,6 +29,9 @@
 #include <linux/mutex.h>
 
 #include <asm/cputime.h>
+#ifdef CONFIG_HAS_EARLYSUSPEND
+#include <linux/earlysuspend.h>
+#endif
 
 static atomic_t active_count = ATOMIC_INIT(0);
 
@@ -80,6 +83,11 @@ static unsigned long timer_rate;
 
 static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		unsigned int event);
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
+static struct early_suspend cpufreq_gov_early_suspend;
+static unsigned int cpufreq_gov_lcd_status_interactive;
+#endif
 
 #ifndef CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVE
 static
@@ -420,6 +428,21 @@ static void cpufreq_interactive_freq_down(struct work_struct *work)
 				max_freq = pjcpu->target_freq;
 		}
 
+#ifdef CONFIG_HAS_EARLYSUSPEND
+		/* should we enable auxillary CPUs? */
+		/* only master CPU is alive and Screen is ON */
+		if (num_online_cpus() < 2 && cpufreq_gov_lcd_status_interactive == 1) {
+			/* hot-plug enable 2nd CPU */
+			cpu_up(1);
+			printk("Interactive - Screen ON Hot-plug!\n");
+		/* Both CPUs are up and Screen is OFF */
+		} else if (num_online_cpus() > 1 && cpufreq_gov_lcd_status_interactive == 0) {
+			/* hot-unplug 2nd CPU */
+			cpu_down(1);
+			printk("Interactive - Screen OFF Hot-unplug!\n");
+		}
+#endif
+
 		if (max_freq != pcpu->policy->cur)
 			__cpufreq_driver_target(pcpu->policy, max_freq,
 						CPUFREQ_RELATION_H);
@@ -636,6 +659,18 @@ static struct notifier_block cpufreq_interactive_idle_nb = {
 	.notifier_call = cpufreq_interactive_idle_notifier,
 };
 
+#ifdef CONFIG_HAS_EARLYSUSPEND
+static void cpufreq_gov_suspend(struct early_suspend *h)
+{
+	cpufreq_gov_lcd_status_interactive = 0;
+}
+
+static void cpufreq_gov_resume(struct early_suspend *h)
+{
+	cpufreq_gov_lcd_status_interactive = 1;
+}
+#endif
+
 static int __init cpufreq_interactive_init(void)
 {
 	unsigned int i;
@@ -675,6 +710,16 @@ static int __init cpufreq_interactive_init(void)
 	spin_lock_init(&up_cpumask_lock);
 	spin_lock_init(&down_cpumask_lock);
 	mutex_init(&set_speed_lock);
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	cpufreq_gov_lcd_status_interactive = 1;
+
+	cpufreq_gov_early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
+
+	cpufreq_gov_early_suspend.suspend = cpufreq_gov_suspend;
+	cpufreq_gov_early_suspend.resume = cpufreq_gov_resume;
+	register_early_suspend(&cpufreq_gov_early_suspend);
+#endif
 
 	idle_notifier_register(&cpufreq_interactive_idle_nb);
 
