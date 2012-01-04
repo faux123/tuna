@@ -705,6 +705,10 @@ EXPORT_SYMBOL_GPL(call_rcu);
  */
 void synchronize_rcu(void)
 {
+	rcu_lockdep_assert(!lock_is_held(&rcu_lock_map),
+			   "Illegal synchronize_rcu() in RCU read-side "
+			   "critical section");
+
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
 	if (!rcu_scheduler_active)
 		return;

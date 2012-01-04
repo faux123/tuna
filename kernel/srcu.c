@@ -172,6 +172,10 @@ static void __synchronize_srcu(struct srcu_struct *sp, void (*sync_func)(void))
 {
 	int idx;
 
+	rcu_lockdep_assert(!lock_is_held(&sp->dep_map),
+			   "Illegal SRCU grace period in same-type "
+			   "SRCU read-side critical section");
+
 	idx = sp->completed;
 	mutex_lock(&sp->mutex);
 
