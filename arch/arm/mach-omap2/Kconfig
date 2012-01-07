@@ -316,7 +316,6 @@ config MACH_OMAP_4430SDP
 	select OMAP_PACKAGE_CBS
 	select REGULATOR_FIXED_VOLTAGE
 	select OMAP_TPS6236X
-	select OMAP_RAM_CONSOLE
 
 config MACH_OMAP4_PANDA
 	bool "OMAP4 Panda Board"
@@ -325,7 +324,6 @@ config MACH_OMAP4_PANDA
 	select OMAP_PACKAGE_CBL
 	select OMAP_PACKAGE_CBS
 	select REGULATOR_FIXED_VOLTAGE
-	select OMAP_RAM_CONSOLE
 
 config MACH_TUNA
 	bool "Tuna Board"
@@ -335,7 +333,6 @@ config MACH_TUNA
 	select OMAP_PACKAGE_CBS
 	select REGULATOR_FIXED_VOLTAGE
 	select OMAP_TPS6236X
-	select OMAP_RAM_CONSOLE
 
 config OMAP3_EMU
 	bool "OMAP3 debugging peripherals"
