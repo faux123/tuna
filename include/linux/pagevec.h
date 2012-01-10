@@ -21,7 +21,6 @@ struct pagevec {
 };
 
 void __pagevec_release(struct pagevec *pvec);
-void __pagevec_free(struct pagevec *pvec);
 void ____pagevec_lru_add(struct pagevec *pvec, enum lru_list lru);
 unsigned pagevec_lookup(struct pagevec *pvec, struct address_space *mapping,
 		pgoff_t start, unsigned nr_pages);
@@ -63,12 +62,6 @@ static inline void pagevec_release(struct pagevec *pvec)
 {
 	if (pagevec_count(pvec))
 		__pagevec_release(pvec);
-}
-
-static inline void pagevec_free(struct pagevec *pvec)
-{
-	if (pagevec_count(pvec))
-		__pagevec_free(pvec);
 }
 
 static inline void __pagevec_lru_add_anon(struct pagevec *pvec)
