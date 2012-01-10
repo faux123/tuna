@@ -695,12 +695,112 @@ int __init_or_module do_one_initcall(initcall_t fn)
 
 extern initcall_t __initcall_start[], __initcall_end[], __early_initcall_end[];
 
+
+static struct initcall_state {
+	initcall_t	*next_call;
+	atomic_t	threads, waiting;
+	wait_queue_head_t queue;
+	int		master_thread;
+} initcall;
+
+int initcall_schedule(void)
+{
+	/* Some probe function needs to wait for a pre-requisite
+	 * initcall to provide some resource.    A wakeup has already
+	 * been arranged for when it arrives.
+	 */
+	if (!initcall.master_thread)
+		return -ENODEV;
+
+	atomic_inc(&initcall.waiting);
+	/* Might need to start a new thread */
+	wake_up(&initcall.queue);
+
+	schedule();
+
+	atomic_dec(&initcall.waiting);
+	/* Might be time to progress to next initcall */
+	wake_up(&initcall.queue);
+
+	return 0;
+}
+
+void initcall_lock(struct mutex *mutex)
+{
+	if (!initcall.master_thread) {
+		mutex_lock(mutex);
+		return;
+	}
+	if (mutex_trylock(mutex))
+		return;
+
+	atomic_inc(&initcall.waiting);
+	/* Might need to start a new thread */
+	wake_up(&initcall.queue);
+
+	mutex_lock(mutex);
+
+	atomic_dec(&initcall.waiting);
+	/* Might be time to progress to next initcall */
+	wake_up(&initcall.queue);
+}
+
+static int init_caller(void *vtnum)
+{
+	unsigned long tnum = (unsigned long)vtnum;
+
+	/* Both next_call and master_thread can only be changed
+	 * when all other threads are waiting, so there is no
+	 * race here.
+	 */
+	while (initcall.next_call < __initcall_end
+	       && initcall.master_thread == tnum) {
+		initcall_t fn;
+
+		/* Don't want to proceed while other threads are
+		 * running.
+		 */
+		wait_event(initcall.queue,
+			   atomic_read(&initcall.threads)
+			   == atomic_read(&initcall.waiting)+1);
+
+		fn = *initcall.next_call;
+		initcall.next_call++;
+
+		do_one_initcall(fn);
+	}
+	atomic_dec(&initcall.threads);
+	wake_up(&initcall.queue);
+	return 0;
+}
+
 static void __init do_initcalls(void)
 {
-	initcall_t *fn;
+	DEFINE_WAIT(wait);
 
-	for (fn = __early_initcall_end; fn < __initcall_end; fn++)
-		do_one_initcall(*fn);
+	initcall.next_call = __early_initcall_end;
+
+	init_waitqueue_head(&initcall.queue);
+
+	while (1) {
+		prepare_to_wait(&initcall.queue, &wait, TASK_UNINTERRUPTIBLE);
+
+		if (initcall.next_call == __initcall_end)
+			break;
+
+		if (atomic_read(&initcall.threads)
+		    == atomic_read(&initcall.waiting)) {
+			/* All threads are waiting, create a new master */
+			initcall.master_thread++;
+			atomic_inc(&initcall.threads);
+			kernel_thread(init_caller,
+				      (void*)initcall.master_thread, 0);
+		}
+		schedule();
+	}
+	finish_wait(&initcall.queue, &wait);
+	wait_event(initcall.queue, atomic_read(&initcall.threads) == 0);
+	initcall.master_thread = 0;
 }
 
 /*

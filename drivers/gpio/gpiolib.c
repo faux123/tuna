@@ -11,6 +11,7 @@
 #include <linux/of_gpio.h>
 #include <linux/idr.h>
 #include <linux/slab.h>
+#include <linux/sched.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/gpio.h>
@@ -58,6 +59,7 @@ struct gpio_desc {
 #define FLAG_TRIG_FALL	5	/* trigger on falling edge */
 #define FLAG_TRIG_RISE	6	/* trigger on rising edge */
 #define FLAG_ACTIVE_LOW	7	/* sysfs value has active low */
+#define FLAG_WAITING	8	/* Some initcall is waiting for this gpio */
 
 #define ID_SHIFT	16	/* add new flags before this one */
 
@@ -69,6 +71,13 @@ struct gpio_desc {
 #endif
 };
 static struct gpio_desc gpio_desc[ARCH_NR_GPIOS];
+
+struct gpio_waiter {
+	struct list_head list;
+	int gpio;
+	wait_queue_head_t queue;
+};
+static LIST_HEAD(waiters);
 
 #ifdef CONFIG_GPIO_SYSFS
 static DEFINE_IDR(dirent_idr);
@@ -1065,6 +1074,13 @@ int gpiochip_add(struct gpio_chip *chip)
 		for (id = base; id < base + chip->ngpio; id++) {
 			gpio_desc[id].chip = chip;
 
+			if (test_bit(FLAG_WAITING, &gpio_desc[id].flags)) {
+				struct gpio_waiter *w;
+				list_for_each_entry(w, &waiters, list)
+					if (w->gpio == id)
+						wake_up(&w->queue);
+			}
+
 			/* REVISIT:  most hardware initializes GPIOs as
 			 * inputs (often with pullups enabled) so power
 			 * usage is minimized.  Linux code should set the
@@ -1179,15 +1195,41 @@ int gpio_request(unsigned gpio, const char *label)
 	struct gpio_chip	*chip;
 	int			status = -EINVAL;
 	unsigned long		flags;
+	int			can_wait = !in_atomic();
 
 	spin_lock_irqsave(&gpio_lock, flags);
 
 	if (!gpio_is_valid(gpio))
 		goto done;
 	desc = &gpio_desc[gpio];
+	if (desc->chip == NULL) {
+		/* possibly need to wait for the chip to appear */
+		struct gpio_waiter w;
+		int status2 = 0;
+		DEFINE_WAIT(wait);
+		if (test_and_set_bit(FLAG_WAITING, &desc->flags))
+			/* Only one waiter allowed */
+			goto done;
+		if (!can_wait)
+			goto done;
+
+		init_waitqueue_head(&w.queue);
+		w.gpio = gpio;
+		list_add(&w.list, &waiters);
+		prepare_to_wait(&w.queue, &wait, TASK_UNINTERRUPTIBLE);
+
+		while (desc->chip == NULL && status2 == 0) {
+			spin_unlock_irqrestore(&gpio_lock, flags);
+			status2 = initcall_schedule();
+			spin_lock_irqsave(&gpio_lock, flags);
+			prepare_to_wait(&w.queue, &wait, TASK_UNINTERRUPTIBLE);
+		}
+		finish_wait(&w.queue, &wait);
+		list_del(&w.list);
+		if (desc->chip == NULL)
+			goto done;
+	}
 	chip = desc->chip;
-	if (chip == NULL)
-		goto done;
 
 	if (!try_module_get(chip->owner))
 		goto done;

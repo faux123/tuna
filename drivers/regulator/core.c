@@ -64,6 +64,15 @@ struct regulator_map {
 	struct regulator_dev *regulator;
 };
 
+struct regulator_waiter {
+	struct list_head list;
+	const char *dev_name;
+	const char *supply;
+	const char *reg;
+	wait_queue_head_t queue;
+};
+static LIST_HEAD(waiters);
+
 /*
  * struct regulator
  *
@@ -946,6 +955,31 @@ out:
 	return err;
 }
 
+static void regulator_wake_waiters(const char *devname, const char *id,
+	const char *reg)
+{
+	struct regulator_waiter *map;
+
+	list_for_each_entry(map, &waiters, list) {
+		if (map->reg) {
+			if (!reg)
+				continue;
+			if (strcmp(map->reg, reg) == 0)
+				wake_up(&map->queue);
+			continue;
+		}
+		if (reg)
+			continue;
+		/* If the mapping has a device set up it must match */
+		if (map->dev_name &&
+		    (!devname || strcmp(map->dev_name, devname)))
+			continue;
+
+		if (strcmp(map->supply, id) == 0)
+			wake_up(&map->queue);
+	}
+}
+
 /**
  * set_consumer_device_supply - Bind a regulator to a symbolic supply
  * @rdev:         regulator source
@@ -1016,6 +1050,7 @@ static int set_consumer_device_supply(struct regulator_dev *rdev,
 	}
 
 	list_add(&node->list, &regulator_map_list);
+	regulator_wake_waiters(node->dev_name, node->supply, NULL);
 	return 0;
 }
 
@@ -1111,12 +1146,29 @@ static int _regulator_get_enable_time(struct regulator_dev *rdev)
 	return rdev->desc->ops->enable_time(rdev);
 }
 
+static struct regulator_dev *regulator_find(const char *devname, const char *id)
+{
+	struct regulator_map *map;
+
+	list_for_each_entry(map, &regulator_map_list, list) {
+		/* If the mapping has a device set up it must match */
+		if (map->dev_name &&
+		    (!devname || strcmp(map->dev_name, devname)))
+			continue;
+
+		if (strcmp(map->supply, id) == 0)
+			return map->regulator;
+	}
+	return NULL;
+}
+
+static int regulator_expected(const char *reg);
+static int regulator_supply_expected(const char *devname, const char *id);
 /* Internal regulator request function */
 static struct regulator *_regulator_get(struct device *dev, const char *id,
 					int exclusive)
 {
 	struct regulator_dev *rdev;
-	struct regulator_map *map;
 	struct regulator *regulator = ERR_PTR(-ENODEV);
 	const char *devname = NULL;
 	int ret;
@@ -1131,17 +1183,9 @@ static struct regulator *_regulator_get(struct device *dev, const char *id,
 
 	mutex_lock(&regulator_list_mutex);
 
-	list_for_each_entry(map, &regulator_map_list, list) {
-		/* If the mapping has a device set up it must match */
-		if (map->dev_name &&
-		    (!devname || strcmp(map->dev_name, devname)))
-			continue;
-
-		if (strcmp(map->supply, id) == 0) {
-			rdev = map->regulator;
-			goto found;
-		}
-	}
+	rdev = regulator_find(devname, id);
+	if (rdev)
+		goto found;
 
 	if (board_wants_dummy_regulator) {
 		rdev = dummy_regulator_rdev;
@@ -1162,6 +1206,30 @@ static struct regulator *_regulator_get(struct device *dev, const char *id,
 		goto found;
 	}
 #endif
+
+	if (regulator_supply_expected(devname, id)) {
+		/* wait for it to appear */
+		struct regulator_waiter w;
+		int status = 0;
+		DEFINE_WAIT(wait);
+		init_waitqueue_head(&w.queue);
+		w.dev_name = devname;
+		w.supply = id;
+		w.reg = NULL;
+		list_add(&w.list, &waiters);
+		prepare_to_wait(&w.queue, &wait, TASK_UNINTERRUPTIBLE);
+		while ((rdev = regulator_find(devname, id)) == NULL &&
+		       status == 0) {
+			mutex_unlock(&regulator_list_mutex);
+			status = initcall_schedule();
+			mutex_lock(&regulator_list_mutex);
+			prepare_to_wait(&w.queue, &wait, TASK_UNINTERRUPTIBLE);
+		}
+		finish_wait(&w.queue, &wait);
+		list_del(&w.list);
+		if (rdev)
+			goto found;
+	}
 
 	mutex_unlock(&regulator_list_mutex);
 	return regulator;
@@ -2635,7 +2703,33 @@ struct regulator_dev *regulator_register(struct regulator_desc *regulator_desc,
 				break;
 			}
 		}
-
+		if (!found && regulator_expected(init_data->supply_regulator)) {
+			struct regulator_waiter w;
+			int status = 0;
+			DEFINE_WAIT(wait);
+			init_waitqueue_head(&w.queue);
+			w.reg = init_data->supply_regulator;
+			w.dev_name = w.supply = NULL;
+			list_add(&w.list, &waiters);
+			prepare_to_wait(&w.queue, &wait, TASK_UNINTERRUPTIBLE);
+			while (status == 0) {
+				list_for_each_entry(r, &regulator_list, list) {
+					if (strcmp(rdev_get_name(r),
+						   init_data->supply_regulator) == 0) {
+						found = 1;
+						break;
+					}
+				}
+				if (found)
+					break;
+				mutex_unlock(&regulator_list_mutex);
+				status = initcall_schedule();
+				mutex_lock(&regulator_list_mutex);
+				prepare_to_wait(&w.queue, &wait, TASK_UNINTERRUPTIBLE);
+			}
+			finish_wait(&w.queue, &wait);
+			list_del(&w.list);
+		}
 		if (!found) {
 			dev_err(dev, "Failed to find supply %s\n",
 				init_data->supply_regulator);
@@ -2662,6 +2756,7 @@ struct regulator_dev *regulator_register(struct regulator_desc *regulator_desc,
 	}
 
 	list_add(&rdev->list, &regulator_list);
+	regulator_wake_waiters(NULL, NULL, rdev_get_name(rdev));
 
 	rdev_init_debugfs(rdev);
 out:
@@ -2801,6 +2896,49 @@ void regulator_has_full_constraints(void)
 	has_full_constraints = 1;
 }
 EXPORT_SYMBOL_GPL(regulator_has_full_constraints);
+
+static struct regulator_init_data **init_data_list;
+void regulator_has_full_constraints_listed(struct regulator_init_data **dlist)
+{
+	has_full_constraints = 1;
+	init_data_list = dlist;
+}
+
+static int regulator_supply_expected(const char *devname, const char *id)
+{
+	int i;
+
+	if (!init_data_list)
+		return 0;
+	for (i = 0; init_data_list[i]; i++) {
+		struct regulator_init_data *d = init_data_list[i];
+		struct regulator_consumer_supply *cs = d->consumer_supplies;
+		int s;
+		for (s = 0; s < d->num_consumer_supplies; s++) {
+			if (cs[s].dev_name &&
+			    (!devname || strcmp(cs[s].dev_name, devname)))
+				continue;
+			if (strcmp(cs[s].supply, id) == 0)
+				return 1;
+		}
+	}
+	return 0;
+}
+
+static int regulator_expected(const char *reg)
+{
+	int i;
+
+	if (!init_data_list)
+		return 0;
+	for (i = 0; init_data_list[i]; i++) {
+		struct regulator_init_data *d = init_data_list[i];
+		if (d->constraints.name &&
+		    strcmp(d->constraints.name, reg) == 0)
+			return 1;
+	}
+	return 0;
+}
 
 /**
  * regulator_use_dummy_regulator - Provide a dummy regulator when none is found
