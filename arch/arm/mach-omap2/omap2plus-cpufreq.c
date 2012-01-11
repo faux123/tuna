@@ -339,8 +339,13 @@ static int __cpuinit omap_cpu_init(struct cpufreq_policy *policy)
 
 	cpufreq_frequency_table_get_attr(freq_table, policy->cpu);
 
+#ifdef CONFIG_CPU_FREQ_SET_MIN_MAX
+	policy->min = CONFIG_CPU_FREQ_MIN;
+	policy->max = CONFIG_CPU_FREQ_MAX;
+#else
 	policy->min = policy->cpuinfo.min_freq;
 	policy->max = policy->cpuinfo.max_freq;
+#endif
 	policy->cur = omap_getspeed(policy->cpu);
 
 	for (i = 0; freq_table[i].frequency != CPUFREQ_TABLE_END; i++)

@@ -366,6 +366,23 @@ config OMAP_ALLOW_OSWR
 	  Which means the Logic of power domains can be lost now
 	  unlike the CSWR wherein the logic is retained
 
+config CPU_FREQ_SET_MIN_MAX
+	bool "Set Min/Max CPU frequencies."
+	default n
+	help
+	  Allow setting min and max CPU frequencies. Sysfs can be used
+	  to override these values.
+
+config CPU_FREQ_MAX
+	int "Max CPU Frequency"
+	depends on CPU_FREQ_SET_MIN_MAX
+	default 1060000
+
+config CPU_FREQ_MIN
+	int "Min CPU Frequency"
+	depends on CPU_FREQ_SET_MIN_MAX
+	default 350000
+
 config PRE_UNDERVOLT
 	bool "Enable CPU compiled time undervolting on OMAP"
 	default n
