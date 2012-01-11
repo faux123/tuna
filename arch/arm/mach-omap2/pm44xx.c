@@ -791,7 +791,7 @@ static int omap4_pm_suspend(void)
 	if (ret)
 		pr_err("Could not enter target state in pm_suspend\n");
 	else
-		pr_err("Successfully put all powerdomains to target state\n");
+		pr_info("Successfully put all powerdomains to target state\n");
 
 	return 0;
 }
