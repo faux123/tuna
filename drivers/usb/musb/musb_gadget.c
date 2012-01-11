@@ -1959,7 +1959,7 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 err2:
 	if (!is_otg_enabled(musb))
 		musb_stop(musb);
-	pm_runtime_put(musb->controller);
+
 err1:
 	musb->gadget_driver = NULL;
 	musb->g.dev.driver = NULL;
