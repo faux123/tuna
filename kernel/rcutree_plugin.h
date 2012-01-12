@@ -886,9 +886,9 @@ static int rcu_preempt_pending(int cpu)
 }
 
 /*
- * Does preemptible RCU need the CPU to stay out of dynticks mode?
+ * Does preemptible RCU have callbacks on this CPU?
  */
-static int rcu_preempt_needs_cpu(int cpu)
+static int rcu_preempt_cpu_has_callbacks(int cpu)
 {
 	return !!per_cpu(rcu_preempt_data, cpu).nxtlist;
 }
@@ -1127,9 +1127,9 @@ static int rcu_preempt_pending(int cpu)
 }
 
 /*
- * Because preemptible RCU does not exist, it never needs any CPU.
+ * Because preemptible RCU does not exist, it never has callbacks
  */
-static int rcu_preempt_needs_cpu(int cpu)
+static int rcu_preempt_cpu_has_callbacks(int cpu)
 {
 	return 0;
 }
