@@ -23,7 +23,6 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/mm_inline.h>
-#include <linux/buffer_head.h>	/* for try_to_release_page() */
 #include <linux/percpu_counter.h>
 #include <linux/percpu.h>
 #include <linux/cpu.h>
@@ -720,24 +719,6 @@ void ____pagevec_lru_add(struct pagevec *pvec, enum lru_list lru)
 }
 
 EXPORT_SYMBOL(____pagevec_lru_add);
-
-/*
- * Try to drop buffers from the pages in a pagevec
- */
-void pagevec_strip(struct pagevec *pvec)
-{
-	int i;
-
-	for (i = 0; i < pagevec_count(pvec); i++) {
-		struct page *page = pvec->pages[i];
-
-		if (page_has_private(page) && trylock_page(page)) {
-			if (page_has_private(page))
-				try_to_release_page(page, 0);
-			unlock_page(page);
-		}
-	}
-}
 
 /**
  * pagevec_lookup - gang pagecache lookup
