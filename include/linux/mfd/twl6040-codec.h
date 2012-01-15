@@ -221,8 +221,10 @@ struct twl6040 {
 	int powered;
 	int power_count;
 
+	/* PLL configuration */
 	enum twl6040_pll_id pll;
 	unsigned int sysclk;
+	unsigned int mclk;
 	int icrev;
 
 	unsigned int irq;
