@@ -508,23 +508,38 @@ int twl6040_set_pll(struct twl6040 *twl6040, enum twl6040_pll_id id,
 	hppllctl = twl6040_reg_read(twl6040, TWL6040_REG_HPPLLCTL);
 	lppllctl = twl6040_reg_read(twl6040, TWL6040_REG_LPPLLCTL);
 
+	/* Force full reconfiguration when switching between PLL */
+	if (id != twl6040->pll) {
+		twl6040->sysclk = 0;
+		twl6040->mclk = 0;
+	}
+
 	switch (id) {
 	case TWL6040_LPPLL_ID:
 		/* lppll divider */
-		switch (freq_out) {
-		case 17640000:
-			lppllctl |= TWL6040_LPLLFIN;
-			break;
-		case 19200000:
-			lppllctl &= ~TWL6040_LPLLFIN;
-			break;
-		default:
-			dev_err(twl6040->dev,
-				"freq_out %d not supported\n", freq_out);
-			ret = -EINVAL;
-			goto pll_out;
+		/* Change the sysclk configuration only if it has been canged */
+		if (twl6040->sysclk != freq_out) {
+			switch (freq_out) {
+			case 17640000:
+				lppllctl |= TWL6040_LPLLFIN;
+				break;
+			case 19200000:
+				lppllctl &= ~TWL6040_LPLLFIN;
+				break;
+			default:
+				dev_err(twl6040->dev,
+					"freq_out %d not supported\n",
+					freq_out);
+				ret = -EINVAL;
+				goto pll_out;
+			}
+			twl6040_reg_write(twl6040, TWL6040_REG_LPPLLCTL,
+					  lppllctl);
 		}
-		twl6040_reg_write(twl6040, TWL6040_REG_LPPLLCTL, lppllctl);
+
+		/* The PLL in use has not been change, we can exit */
+		if (twl6040->pll == id)
+			break;
 
 		switch (freq_in) {
 		case 32768:
@@ -557,47 +572,56 @@ int twl6040_set_pll(struct twl6040 *twl6040, enum twl6040_pll_id id,
 			goto pll_out;
 		}
 
-		hppllctl &= ~TWL6040_MCLK_MSK;
+		if (twl6040->mclk != freq_in) {
+			hppllctl &= ~TWL6040_MCLK_MSK;
 
-		switch (freq_in) {
-		case 12000000:
-			/* mclk input, pll enabled */
-			hppllctl |= TWL6040_MCLK_12000KHZ |
-				    TWL6040_HPLLSQRBP |
-				    TWL6040_HPLLENA;
-			break;
-		case 19200000:
-			/* mclk input, pll disabled */
-			hppllctl |= TWL6040_MCLK_19200KHZ |
-				    TWL6040_HPLLSQRENA |
-				    TWL6040_HPLLBP;
-			break;
-		case 26000000:
-			/* mclk input, pll enabled */
-			hppllctl |= TWL6040_MCLK_26000KHZ |
-				    TWL6040_HPLLSQRBP |
-				    TWL6040_HPLLENA;
-			break;
-		case 38400000:
-			/* clk slicer, pll disabled */
-			hppllctl |= TWL6040_MCLK_38400KHZ |
-				    TWL6040_HPLLSQRENA |
-				    TWL6040_HPLLBP;
-			break;
-		default:
-			dev_err(twl6040->dev,
-				"freq_in %d not supported\n", freq_in);
-			ret = -EINVAL;
-			goto pll_out;
+			switch (freq_in) {
+			case 12000000:
+				/* PLL enabled, active mode */
+				hppllctl |= TWL6040_MCLK_12000KHZ |
+					    TWL6040_HPLLENA;
+				break;
+			case 19200000:
+				/*
+				* PLL disabled
+				* (enable PLL if MCLK jitter quality
+				*  doesn't meet specification)
+				*/
+				hppllctl |= TWL6040_MCLK_19200KHZ;
+				break;
+			case 26000000:
+				/* PLL enabled, active mode */
+				hppllctl |= TWL6040_MCLK_26000KHZ |
+					    TWL6040_HPLLENA;
+				break;
+			case 38400000:
+				/* PLL enabled, active mode */
+				hppllctl |= TWL6040_MCLK_38400KHZ |
+					    TWL6040_HPLLENA;
+				break;
+			default:
+				dev_err(twl6040->dev,
+					"freq_in %d not supported\n", freq_in);
+				ret = -EINVAL;
+				goto pll_out;
+			}
+
+			/*
+			 * enable clock slicer to ensure input waveform is
+			 * square
+			 */
+			hppllctl |= TWL6040_HPLLSQRENA;
+
+			twl6040_reg_write(twl6040, TWL6040_REG_HPPLLCTL,
+					  hppllctl);
+			usleep_range(500, 700);
+			lppllctl |= TWL6040_HPLLSEL;
+			twl6040_reg_write(twl6040, TWL6040_REG_LPPLLCTL,
+					  lppllctl);
+			lppllctl &= ~TWL6040_LPLLENA;
+			twl6040_reg_write(twl6040, TWL6040_REG_LPPLLCTL,
+					  lppllctl);
 		}
-
-		twl6040_reg_write(twl6040, TWL6040_REG_HPPLLCTL, hppllctl);
-		udelay(500);
-		lppllctl |= TWL6040_HPLLSEL;
-		twl6040_reg_write(twl6040, TWL6040_REG_LPPLLCTL, lppllctl);
-		lppllctl &= ~TWL6040_LPLLENA;
-		twl6040_reg_write(twl6040, TWL6040_REG_LPPLLCTL, lppllctl);
-
 		twl6040->pll = TWL6040_HPPLL_ID;
 		break;
 	default:
