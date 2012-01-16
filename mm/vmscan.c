@@ -1050,6 +1050,7 @@ static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 		unsigned long end_pfn;
 		unsigned long page_pfn;
 		int zone_id;
+		unsigned int isolated_pages = 1;
 
 		page = lru_to_page(src);
 		prefetchw_prev_lru_page(page, src, flags);
@@ -1060,7 +1061,8 @@ static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 		case 0:
 			list_move(&page->lru, dst);
 			mem_cgroup_del_lru(page);
-			nr_taken += hpage_nr_pages(page);
+			isolated_pages = hpage_nr_pages(page);
+			nr_taken += isolated_pages;
 			break;
 
 		case -EBUSY:
@@ -1074,6 +1076,14 @@ static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 		}
 
 		if (!order)
+			continue;
+
+		/*
+		 * To save a few cycles, the following pfn-based isolation
+		 * could be bypassed if the newly isolated page is no less
+		 * than the order aligned region.
+		 */
+		if (isolated_pages >= (1 << order))
 			continue;
 
 		/*
