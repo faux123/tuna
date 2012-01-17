@@ -1228,7 +1228,7 @@ fetch_events:
 			}
 
 			spin_unlock_irqrestore(&ep->lock, flags);
-			if (!schedule_hrtimeout_range(to, slack, HRTIMER_MODE_ABS))
+			if (!schedule_hrtimeout_range(to, slack, HRTIMER_MODE_ABS, NULL))
 				timed_out = 1;
 
 			spin_lock_irqsave(&ep->lock, flags);
