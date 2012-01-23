@@ -436,7 +436,10 @@ int blkdev_issue_flush(struct block_device *bdev, gfp_t gfp_mask,
 
 	if (!bio_flagged(bio, BIO_UPTODATE))
 		ret = -EIO;
-
+	else if (bdev != bdev->bd_contains)
+		/* invalidate parent block_device */
+		invalidate_bdev(bdev->bd_contains);
+ 
 	bio_put(bio);
 	return ret;
 }
