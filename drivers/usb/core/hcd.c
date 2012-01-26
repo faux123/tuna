@@ -111,6 +111,9 @@ static DEFINE_SPINLOCK(hcd_urb_unlink_lock);
 /* wait queue for synchronous unlinks */
 DECLARE_WAIT_QUEUE_HEAD(usb_kill_urb_queue);
 
+/* work queue to handle reset and probing */
+static struct workqueue_struct *hcd_workq;
+
 static inline int is_root_hub(struct usb_device *udev)
 {
 	return (udev->parent == NULL);
@@ -2354,17 +2357,7 @@ static int usb_hcd_request_irqs(struct usb_hcd *hcd,
 	return 0;
 }
 
-/**
- * usb_add_hcd - finish generic HCD structure initialization and register
- * @hcd: the usb_hcd structure to initialize
- * @irqnum: Interrupt line to allocate
- * @irqflags: Interrupt type flags
- *
- * Finish the remaining parts of generic HCD initialization: allocate the
- * buffers of consistent memory, register the bus, request the IRQ line,
- * and call the driver's reset() and start() routines.
- */
-int usb_add_hcd(struct usb_hcd *hcd,
+int usb_add_hcd_work(struct usb_hcd *hcd,
 		unsigned int irqnum, unsigned long irqflags)
 {
 	int retval;
@@ -2498,7 +2491,50 @@ err_allocate_root_hub:
 err_register_bus:
 	hcd_buffer_destroy(hcd);
 	return retval;
-} 
+}
+
+/* This is the work function for usb_add_hcd() */
+void probe_hcd(struct work_struct *item)
+{
+	struct usb_hcd *hcd = container_of(item, struct usb_hcd,
+					   init_work.work);
+	int err;
+
+	err = usb_add_hcd_work(hcd, hcd->init_irqnum, hcd->init_irqflags);
+	if (err)
+		printk(KERN_ERR "probe_hcd failed with error %d\n", err);
+}
+
+/**
+ * usb_add_hcd - finish generic HCD structure initialization and register
+ * @hcd: the usb_hcd structure to initialize
+ * @irqnum: Interrupt line to allocate
+ * @irqflags: Interrupt type flags
+ *
+ * Finish the remaining parts of generic HCD initialization: allocate the
+ * buffers of consistent memory, register the bus, request the IRQ line,
+ * and call the driver's reset() and start() routines.
+ */
+int usb_add_hcd(struct usb_hcd *hcd,
+		unsigned int irqnum, unsigned long irqflags)
+{
+	/*
+	 * Perhaps we should have a pointer to an allocated structure since
+	 * these fields are not used after init.
+	 */
+	INIT_DELAYED_WORK(&hcd->init_work, probe_hcd);
+	hcd->init_irqnum = irqnum;
+	hcd->init_irqflags = irqflags;
+
+	/*
+	 * I'm sure we can't delay this by a second. Should we start it
+	 * immediately? Are we allowed to delay a little? Sometimes USB will
+	 * provide the root disk, so perhaps not.
+	 */
+	if (!queue_delayed_work(hcd_workq, &hcd->init_work, HZ))
+		return -ENOMEM;
+	return 0;
+}
 EXPORT_SYMBOL_GPL(usb_add_hcd);
 
 /**
@@ -2571,6 +2607,21 @@ usb_hcd_platform_shutdown(struct platform_device* dev)
 		hcd->driver->shutdown(hcd);
 }
 EXPORT_SYMBOL_GPL(usb_hcd_platform_shutdown);
+
+int usb_hcd_init(void)
+{
+	hcd_workq = alloc_workqueue("usb_hcd",
+				WQ_NON_REENTRANT | WQ_MEM_RECLAIM, 1);
+	if (!hcd_workq)
+		return -ENOMEM;
+
+	return 0;
+}
+
+void usb_hcd_cleanup(void)
+{
+	destroy_workqueue(hcd_workq);
+}
 
 /*-------------------------------------------------------------------------*/
 

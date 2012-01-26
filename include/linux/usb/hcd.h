@@ -87,6 +87,9 @@ struct usb_hcd {
 #ifdef CONFIG_USB_SUSPEND
 	struct work_struct	wakeup_work;	/* for remote wakeup */
 #endif
+	struct delayed_work	init_work;	/* for initial init */
+	unsigned int		init_irqnum;	/* requested irqnum */
+	unsigned long		init_irqflags;	/* requested irq flags */
 
 	/*
 	 * hardware info/state
@@ -668,6 +671,12 @@ extern struct rw_semaphore ehci_cf_port_reset_rwsem;
 #define USB_OHCI_LOADED		1
 #define USB_EHCI_LOADED		2
 extern unsigned long usb_hcds_loaded;
+
+/* Initalise the HCD ready for use, Must be called before usb_add_hcd() */
+int usb_hcd_init(void);
+
+/* Clean up HCD */
+void usb_hcd_cleanup(void);
 
 #endif /* __KERNEL__ */
 

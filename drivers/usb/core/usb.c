@@ -1035,10 +1035,14 @@ static int __init usb_init(void)
 	retval = usb_hub_init();
 	if (retval)
 		goto hub_init_failed;
+	retval = usb_hcd_init();
+	if (retval)
+		goto hcd_init_failed;
 	retval = usb_register_device_driver(&usb_generic_driver, THIS_MODULE);
 	if (!retval)
 		goto out;
 
+hcd_init_failed:
 	usb_hub_cleanup();
 hub_init_failed:
 	usbfs_cleanup();
@@ -1068,6 +1072,7 @@ static void __exit usb_exit(void)
 		return;
 
 	usb_deregister_device_driver(&usb_generic_driver);
+	usb_hcd_cleanup();
 	usb_major_cleanup();
 	usbfs_cleanup();
 	usb_deregister(&usbfs_driver);
