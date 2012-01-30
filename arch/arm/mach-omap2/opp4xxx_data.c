@@ -205,7 +205,7 @@ struct omap_volt_data omap446x_vdd_iva_volt_data[] = {
 #ifdef CONFIG_PRE_UNDERVOLT
 #define OMAP4460_VDD_CORE_OPP50_UV		 900000
 #define OMAP4460_VDD_CORE_OPP100_UV		1055000
-#define OMAP4460_VDD_CORE_OPP100_PLUS_UV	1096000
+#define OMAP4460_VDD_CORE_OPP100_PLUS_UV	1113000
 #define OMAP4460_VDD_CORE_OPP100_OV_UV		1169000
 #else
 #define OMAP4460_VDD_CORE_OPP50_UV		 962000
@@ -311,7 +311,7 @@ static struct omap_opp_def __initdata omap446x_opp_def_list[] = {
 	/* SGX OPP2 - OPP100 */
 	OPP_INITIALIZER("gpu", "dpll_per_m7x2_ck", "core", true, 307200000, OMAP4460_VDD_CORE_OPP100_UV),
 	/* SGX OPP3 - OPPOV */
-	OPP_INITIALIZER("gpu", "dpll_per_m7x2_ck", "core", true, 422400000, OMAP4460_VDD_CORE_OPP100_OV_UV),
+	OPP_INITIALIZER("gpu", "dpll_per_m7x2_ck", "core", true, 403200000, OMAP4460_VDD_CORE_OPP100_OV_UV),
 #endif
 	/* FDIF OPP1 - OPP25 */
 	OPP_INITIALIZER("fdif", "fdif_fck", "core", true, 32000000, OMAP4460_VDD_CORE_OPP50_UV),
