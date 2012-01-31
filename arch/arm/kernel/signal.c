@@ -207,6 +207,20 @@ static int preserve_vfp_context(struct vfp_sigframe __user *frame)
 	__put_user_error(h->fpinst, &frame->ufp_exc.fpinst, err);
 	__put_user_error(h->fpinst2, &frame->ufp_exc.fpinst2, err);
 
+	vfp_flush_hwstate(thread);
+
+	/*
+	 * As per the PCS, clear the length and stride bits before entry
+	 * to the signal handler.
+	 */
+	h->fpscr &= ~(FPSCR_LENGTH_MASK | FPSCR_STRIDE_MASK);
+
+	/*
+	 * Disable VFP so that we can detect if it was used by the
+	 * signal handler.
+	 */
+	h->fpexc &= ~FPEXC_EN;
+
 	return err ? -EFAULT : 0;
 }
 
@@ -227,7 +241,8 @@ static int restore_vfp_context(struct vfp_sigframe __user *frame)
 	if (magic != VFP_MAGIC || size != VFP_STORAGE_SIZE)
 		return -EINVAL;
 
-	vfp_flush_hwstate(thread);
+	if (h->fpexc & FPEXC_EN)
+		vfp_flush_hwstate(thread);
 
 	/*
 	 * Copy the floating point registers. There can be unused
