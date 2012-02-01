@@ -557,6 +557,21 @@ int vfp_preserve_user_hwstate(struct user_vfp __user *ufp,
 
 	if (err)
 		return -EFAULT;
+
+	/* Ensure that VFP is disabled. */
+	vfp_flush_hwstate(thread);
+
+	/*
+	 * As per the PCS, clear the length and stride bits before entry
+	 * to the signal handler.
+	 */
+	hwstate->fpscr &= ~(FPSCR_LENGTH_MASK | FPSCR_STRIDE_MASK);
+
+	/*
+	 * Disable VFP in the hwstate so that we can detect if it was
+	 * used by the signal handler.
+	 */
+	hwstate->fpexc &= ~FPEXC_EN;
 	return 0;
 }
 
@@ -569,7 +584,12 @@ int vfp_restore_user_hwstate(struct user_vfp __user *ufp,
 	unsigned long fpexc;
 	int err = 0;
 
-	vfp_flush_hwstate(thread);
+	/*
+	 * If VFP has been used, then disable it to avoid corrupting
+	 * the new thread state.
+	 */
+	if (hwstate->fpexc & FPEXC_EN)
+		vfp_flush_hwstate(thread);
 
 	/*
 	 * Copy the floating point registers. There can be unused
