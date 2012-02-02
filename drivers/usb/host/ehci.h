@@ -142,6 +142,7 @@ struct ehci_hcd {			/* one per controller */
 	/* Transceiver QUIRKS */
 	unsigned		has_smsc_ulpi_bug:1; /* Smsc */
 	unsigned		resume_error_flag:1; /* Smsc */
+	unsigned		frame_index_bug:1; /* MosChip (AKA NetMos) */
 
 	/* required for usb32 quirk */
 	#define OHCI_CTRL_HCFS          (3 << 6)
