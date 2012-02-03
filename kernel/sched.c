@@ -1280,12 +1280,6 @@ void wake_up_idle_cpu(int cpu)
 		smp_send_reschedule(cpu);
 }
 
-static void reset_first_second_pick_cpu(int cpu);
-
-#else	/* CONFIG_NO_HZ */
-
-static inline void reset_first_second_pick_cpu(int cpu) { }
-
 #endif /* CONFIG_NO_HZ */
 
 static u64 sched_avg_period(void)
@@ -8216,7 +8210,6 @@ void __init sched_init(void)
 	atomic_set(&nohz.first_pick_cpu, nr_cpu_ids);
 	atomic_set(&nohz.second_pick_cpu, nr_cpu_ids);
 	nohz.next_balance = jiffies;
-	spin_lock_init(&nohz.next_balance_lock);
 #endif
 	/* May be allocated at isolcpus cmdline parse time */
 	if (cpu_isolated_map == NULL)
