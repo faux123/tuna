@@ -418,7 +418,7 @@ static int vfp_pm_suspend(void)
 		vfp_save_state(&ti->vfpstate, fpexc);
 
 		/* disable, just in case */
-		fmxr(FPEXC, fmrx(FPEXC) & ~FPEXC_EN);
+		fmxr(FPEXC, fpexc & ~FPEXC_EN);
 	} else if (vfp_current_hw_state[ti->cpu]) {
 		fmxr(FPEXC, fpexc | FPEXC_EN);
 		vfp_save_state(vfp_current_hw_state[ti->cpu], fpexc);
