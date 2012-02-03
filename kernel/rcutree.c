@@ -196,7 +196,7 @@ void rcu_note_context_switch(int cpu)
 EXPORT_SYMBOL_GPL(rcu_note_context_switch);
 
 DEFINE_PER_CPU(struct rcu_dynticks, rcu_dynticks) = {
-	.dynticks_nesting = DYNTICK_TASK_NESTING,
+	.dynticks_nesting = DYNTICK_TASK_EXIT_IDLE,
 	.dynticks = ATOMIC_INIT(1),
 };
 
@@ -389,7 +389,11 @@ void rcu_idle_enter(void)
 	local_irq_save(flags);
 	rdtp = &__get_cpu_var(rcu_dynticks);
 	oldval = rdtp->dynticks_nesting;
-	rdtp->dynticks_nesting = 0;
+	WARN_ON_ONCE((oldval & DYNTICK_TASK_NESTING_MASK) == 0);
+	if ((oldval & DYNTICK_TASK_NESTING_MASK) == DYNTICK_TASK_NESTING_VALUE)
+		rdtp->dynticks_nesting = 0;
+	else
+		rdtp->dynticks_nesting -= DYNTICK_TASK_NESTING_VALUE;
 	rcu_idle_enter_common(rdtp, oldval);
 	local_irq_restore(flags);
 }
@@ -476,8 +480,11 @@ void rcu_idle_exit(void)
 	local_irq_save(flags);
 	rdtp = &__get_cpu_var(rcu_dynticks);
 	oldval = rdtp->dynticks_nesting;
-	WARN_ON_ONCE(oldval != 0);
-	rdtp->dynticks_nesting = DYNTICK_TASK_NESTING;
+	WARN_ON_ONCE(oldval < 0);
+	if (oldval & DYNTICK_TASK_NESTING_MASK)
+		rdtp->dynticks_nesting += DYNTICK_TASK_NESTING_VALUE;
+	else
+		rdtp->dynticks_nesting = DYNTICK_TASK_EXIT_IDLE;
 	rcu_idle_exit_common(rdtp, oldval);
 	local_irq_restore(flags);
 }
@@ -2029,7 +2036,7 @@ rcu_boot_init_percpu_data(int cpu, struct rcu_state *rsp)
 		rdp->nxttail[i] = &rdp->nxtlist;
 	rdp->qlen = 0;
 	rdp->dynticks = &per_cpu(rcu_dynticks, cpu);
-	WARN_ON_ONCE(rdp->dynticks->dynticks_nesting != DYNTICK_TASK_NESTING);
+	WARN_ON_ONCE(rdp->dynticks->dynticks_nesting != DYNTICK_TASK_EXIT_IDLE);
 	WARN_ON_ONCE(atomic_read(&rdp->dynticks->dynticks) != 1);
 	rdp->cpu = cpu;
 	rdp->rsp = rsp;
@@ -2057,7 +2064,7 @@ rcu_init_percpu_data(int cpu, struct rcu_state *rsp, int preemptible)
 	rdp->qlen_last_fqs_check = 0;
 	rdp->n_force_qs_snap = rsp->n_force_qs;
 	rdp->blimit = blimit;
-	rdp->dynticks->dynticks_nesting = DYNTICK_TASK_NESTING;
+	rdp->dynticks->dynticks_nesting = DYNTICK_TASK_EXIT_IDLE;
 	atomic_set(&rdp->dynticks->dynticks,
 		   (atomic_read(&rdp->dynticks->dynticks) & ~0x1) + 1);
 	rcu_prepare_for_idle_init(cpu);

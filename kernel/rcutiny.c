@@ -54,7 +54,7 @@ static void __call_rcu(struct rcu_head *head,
 
 #include "rcutiny_plugin.h"
 
-static long long rcu_dynticks_nesting = DYNTICK_TASK_NESTING;
+static long long rcu_dynticks_nesting = DYNTICK_TASK_EXIT_IDLE;
 
 /* Common code for rcu_idle_enter() and rcu_irq_exit(), see kernel/rcutree.c. */
 static void rcu_idle_enter_common(long long oldval)
@@ -89,7 +89,12 @@ void rcu_idle_enter(void)
 
 	local_irq_save(flags);
 	oldval = rcu_dynticks_nesting;
-	rcu_dynticks_nesting = 0;
+	WARN_ON_ONCE((rcu_dynticks_nesting & DYNTICK_TASK_NESTING_MASK) == 0);
+	if ((rcu_dynticks_nesting & DYNTICK_TASK_NESTING_MASK) ==
+	    DYNTICK_TASK_NESTING_VALUE)
+		rcu_dynticks_nesting = 0;
+	else
+		rcu_dynticks_nesting  -= DYNTICK_TASK_NESTING_VALUE;
 	rcu_idle_enter_common(oldval);
 	local_irq_restore(flags);
 }
@@ -141,8 +146,11 @@ void rcu_idle_exit(void)
 
 	local_irq_save(flags);
 	oldval = rcu_dynticks_nesting;
-	WARN_ON_ONCE(oldval != 0);
-	rcu_dynticks_nesting = DYNTICK_TASK_NESTING;
+	WARN_ON_ONCE(rcu_dynticks_nesting < 0);
+	if (rcu_dynticks_nesting & DYNTICK_TASK_NESTING_MASK)
+		rcu_dynticks_nesting += DYNTICK_TASK_NESTING_VALUE;
+	else
+		rcu_dynticks_nesting = DYNTICK_TASK_EXIT_IDLE;
 	rcu_idle_exit_common(oldval);
 	local_irq_restore(flags);
 }
