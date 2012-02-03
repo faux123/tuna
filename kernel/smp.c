@@ -12,8 +12,6 @@
 #include <linux/gfp.h>
 #include <linux/smp.h>
 #include <linux/cpu.h>
-#include <linux/async.h>
-#include <linux/delay.h>
 
 #ifdef CONFIG_USE_GENERIC_SMP_HELPERS
 static struct {
@@ -666,45 +664,17 @@ void __init setup_nr_cpu_ids(void)
 	nr_cpu_ids = find_last_bit(cpumask_bits(cpu_possible_mask),NR_CPUS) + 1;
 }
 
-void __init async_cpu_up(void *data, async_cookie_t cookie)
-{
-	unsigned long nr = (unsigned long) data;
-	/*
-	 * we can only up one cpu at a time, due to the hotplug lock;
-	 * it's better to wait for all earlier CPUs to be done before
-	 * us so that the bring up order is predictable.
-	 */
-	async_synchronize_cookie(cookie);
-	/*
-	 * wait a little bit of time between cpus, to allow
-	 * the kernel boot to not get stuck for a long time
-	 * on the hotplug lock. We wait longer for the first
-	 * CPU since many of the early kernel init code is
-	 * of the hotplug-lock using type.
-	 */
-	if (nr < 2)
-		msleep(100);
-	else
-		msleep(5);
-	cpu_up(nr);
-}
-
 /* Called by boot processor to activate the rest. */
 void __init smp_init(void)
 {
 	unsigned int cpu;
 
 	/* FIXME: This should be done in userspace --RR */
-
-	/*
-	 * But until we do this in userspace, we're going to do this
-	 * in parallel to the rest of the kernel boot up.-- Arjan
-	 */
 	for_each_present_cpu(cpu) {
 		if (num_online_cpus() >= setup_max_cpus)
 			break;
 		if (!cpu_online(cpu))
-			async_schedule(async_cpu_up, (void *) cpu);
+			cpu_up(cpu);
 	}
 
 	/* Any cleanup work */
