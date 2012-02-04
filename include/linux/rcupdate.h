@@ -255,6 +255,15 @@ static inline void destroy_rcu_head_on_stack(struct rcu_head *head)
 }
 #endif	/* #else !CONFIG_DEBUG_OBJECTS_RCU_HEAD */
 
+#if defined(CONFIG_HOTPLUG_CPU) && defined(CONFIG_PROVE_RCU)
+bool rcu_lockdep_current_cpu_online(void);
+#else /* #if defined(CONFIG_HOTPLUG_CPU) && defined(CONFIG_PROVE_RCU) */
+static inline bool rcu_lockdep_current_cpu_online(void)
+{
+	return 1;
+}
+#endif /* #else #if defined(CONFIG_HOTPLUG_CPU) && defined(CONFIG_PROVE_RCU) */
+
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
 
 #ifdef CONFIG_PROVE_RCU
@@ -302,6 +311,8 @@ static inline int rcu_read_lock_held(void)
 		return 1;
 	if (rcu_is_cpu_idle())
 		return 0;
+	if (!rcu_lockdep_current_cpu_online())
+		return 0;
 	return lock_is_held(&rcu_lock_map);
 }
 
@@ -338,6 +349,9 @@ extern int rcu_read_lock_bh_held(void);
  * notice an extended quiescent state to other CPUs that started a grace
  * period. Otherwise we would delay any grace period as long as we run in
  * the idle task.
+ *
+ * Similarly, we avoid claiming an SRCU read lock held if the current
+ * CPU is offline.
  */
 #ifdef CONFIG_PREEMPT
 static inline int rcu_read_lock_sched_held(void)
@@ -347,6 +361,8 @@ static inline int rcu_read_lock_sched_held(void)
 	if (!debug_lockdep_rcu_enabled())
 		return 1;
 	if (rcu_is_cpu_idle())
+		return 0;
+	if (!rcu_lockdep_current_cpu_online())
 		return 0;
 	if (debug_locks)
 		lockdep_opinion = lock_is_held(&rcu_sched_lock_map);
