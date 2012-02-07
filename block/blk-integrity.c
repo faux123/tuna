@@ -24,7 +24,6 @@
 #include <linux/mempool.h>
 #include <linux/bio.h>
 #include <linux/scatterlist.h>
-#include <linux/export.h>
 #include <linux/slab.h>
 
 #include "blk.h"
