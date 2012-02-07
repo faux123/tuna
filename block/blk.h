@@ -186,7 +186,7 @@ static inline int blk_do_io_stat(struct request *rq)
 	        (rq->cmd_flags & REQ_DISCARD));
 }
 
-#if defined (CONFIG_IOSCHED_CFQ) || (CONFIG_IOSCHED_FIOPS)
+#ifdef CONFIG_IOSCHED_CFQ
 struct queue_data;
 struct ioc_builder {
 	struct dev_io_context *(*alloc_ioc)(struct ioc_builder *builder,

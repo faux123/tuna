@@ -164,7 +164,7 @@ static int __init blk_ioc_init(void)
 }
 subsys_initcall(blk_ioc_init);
 
-#if defined (CONFIG_IOSCHED_CFQ) || (CONFIG_IOSCHED_FIOPS)
+#ifdef CONFIG_IOSCHED_CFQ
 #define CIC_DEAD_INDEX_SHIFT	1
 
 static inline void *queue_data_dead_key(struct queue_data *qdata)
