@@ -14,6 +14,7 @@
 #include <linux/rbtree.h>
 #include <linux/ioprio.h>
 #include <linux/blktrace_api.h>
+#include "blk.h"
 #include "cfq.h"
 
 /*
@@ -3211,16 +3212,14 @@ static struct cfq_io_context *
 cfq_get_io_context(struct cfq_data *cfqd, gfp_t gfp_mask)
 {
 	struct io_context *ioc = NULL;
-	struct cfq_io_context *cic;
-	int ret;
+	struct cfq_io_context *cic = NULL;
 
 	might_sleep_if(gfp_mask & __GFP_WAIT);
 
-	ioc = get_io_context(gfp_mask, cfqd->queue->node);
+	ioc = current_io_context(gfp_mask, cfqd->queue->node);
 	if (!ioc)
-		return NULL;
+		goto err;
 
-retry:
 	cic = cfq_cic_lookup(cfqd, ioc);
 	if (cic)
 		goto out;
@@ -3229,16 +3228,11 @@ retry:
 	if (cic == NULL)
 		goto err;
 
-	ret = cfq_cic_link(cfqd, ioc, cic, gfp_mask);
-	if (ret == -EEXIST) {
-		/* someone has linked cic to ioc already */
-		cfq_cic_free(cic);
-		goto retry;
-	} else if (ret)
-		goto err_free;
-
+	if (cfq_cic_link(cfqd, ioc, cic, gfp_mask))
+		goto err;
 out:
-	smp_read_barrier_depends();
+	get_io_context(ioc);
+
 	if (unlikely(ioc->ioprio_changed))
 		cfq_ioc_set_ioprio(ioc);
 
@@ -3247,10 +3241,9 @@ out:
 		cfq_ioc_set_cgroup(ioc);
 #endif
 	return cic;
-err_free:
-	cfq_cic_free(cic);
 err:
-	put_io_context(ioc);
+	if (cic)
+		cfq_cic_free(cic);
 	return NULL;
 }
 
