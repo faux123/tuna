@@ -205,9 +205,8 @@ void exit_io_context(struct task_struct *task)
 	put_io_context(ioc, NULL);
 }
 
-static struct io_context *create_task_io_context(struct task_struct *task,
-						 gfp_t gfp_flags, int node,
-						 bool take_ref)
+void create_io_context_slowpath(struct task_struct *task, gfp_t gfp_flags,
+				int node)
 {
 	struct io_context *ioc;
 
@@ -215,7 +214,7 @@ static struct io_context *create_task_io_context(struct task_struct *task,
 				    node);
 
 	if (unlikely(!ioc))
-		return NULL;
+		return;
 
 	/* initialize */
 	atomic_long_set(&ioc->refcount, 1);
@@ -228,38 +227,14 @@ static struct io_context *create_task_io_context(struct task_struct *task,
 	/* try to install, somebody might already have beaten us to it */
 	task_lock(task);
 
-	if (!task->io_context && !(task->flags & PF_EXITING)) {
+	if (!task->io_context && !(task->flags & PF_EXITING))
 		task->io_context = ioc;
-	} else {
+	else
 		kmem_cache_free(iocontext_cachep, ioc);
-		ioc = task->io_context;
-	}
-
-	if (ioc && take_ref)
-		get_io_context(ioc);
 
 	task_unlock(task);
-	return ioc;
 }
-
-/*
- * If the current task has no IO context then create one and initialise it.
- * Otherwise, return its existing IO context.
- *
- * This returned IO context doesn't have a specifically elevated refcount,
- * but since the current task itself holds a reference, the context can be
- * used in general code, so long as it stays within `current` context.
- */
-struct io_context *current_io_context(gfp_t gfp_flags, int node)
-{
-	might_sleep_if(gfp_flags & __GFP_WAIT);
-
-	if (current->io_context)
-		return current->io_context;
-
-	return create_task_io_context(current, gfp_flags, node, false);
-}
-EXPORT_SYMBOL(current_io_context);
+EXPORT_SYMBOL(create_io_context_slowpath);
 
 /**
  * get_task_io_context - get io_context of a task
@@ -272,7 +247,7 @@ EXPORT_SYMBOL(current_io_context);
  * incremented.
  *
  * This function always goes through task_lock() and it's better to use
- * current_io_context() + get_io_context() for %current.
+ * %current->io_context + get_io_context() for %current.
  */
 struct io_context *get_task_io_context(struct task_struct *task,
 				       gfp_t gfp_flags, int node)
@@ -281,16 +256,18 @@ struct io_context *get_task_io_context(struct task_struct *task,
 
 	might_sleep_if(gfp_flags & __GFP_WAIT);
 
-	task_lock(task);
-	ioc = task->io_context;
-	if (likely(ioc)) {
-		get_io_context(ioc);
+	do {
+		task_lock(task);
+		ioc = task->io_context;
+		if (likely(ioc)) {
+			get_io_context(ioc);
+			task_unlock(task);
+			return ioc;
+		}
 		task_unlock(task);
-		return ioc;
-	}
-	task_unlock(task);
+	} while (create_io_context(task, gfp_flags, node));
 
-	return create_task_io_context(task, gfp_flags, node, true);
+	return NULL;
 }
 EXPORT_SYMBOL(get_task_io_context);
 
