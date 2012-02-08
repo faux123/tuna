@@ -1051,21 +1051,25 @@ keep_lumpy:
  */
 int __isolate_lru_page(struct page *page, int mode, int file)
 {
+	bool all_lru_mode;
 	int ret = -EINVAL;
 
 	/* Only take pages on the LRU. */
 	if (!PageLRU(page))
 		return ret;
 
+	all_lru_mode = (mode & (ISOLATE_ACTIVE|ISOLATE_INACTIVE)) ==
+		(ISOLATE_ACTIVE|ISOLATE_INACTIVE);
+
 	/*
 	 * When checking the active state, we need to be sure we are
 	 * dealing with comparible boolean values.  Take the logical not
 	 * of each.
 	 */
-	if (mode != ISOLATE_BOTH && (!PageActive(page) != !mode))
+	if (!all_lru_mode && !PageActive(page) != !(mode & ISOLATE_ACTIVE))
 		return ret;
 
-	if (mode != ISOLATE_BOTH && page_is_file_cache(page) != file)
+	if (!all_lru_mode && !!page_is_file_cache(page) != file)
 		return ret;
 
 	/*
@@ -1136,8 +1140,8 @@ static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 
 		switch (__isolate_lru_page(page, mode, file)) {
 		case 0:
+			mem_cgroup_lru_del(page);
 			list_move(&page->lru, dst);
-			mem_cgroup_del_lru(page);
 			isolated_pages = hpage_nr_pages(page);
 			nr_taken += isolated_pages;
 			break;
@@ -1145,7 +1149,6 @@ static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 		case -EBUSY:
 			/* else it is being freed elsewhere */
 			list_move(&page->lru, src);
-			mem_cgroup_rotate_lru_list(page, page_lru(page));
 			continue;
 
 		default:
@@ -1203,8 +1206,8 @@ static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 				break;
 
 			if (__isolate_lru_page(cursor_page, mode, file) == 0) {
+				mem_cgroup_lru_del(cursor_page);
 				list_move(&cursor_page->lru, dst);
-				mem_cgroup_del_lru(cursor_page);
 				nr_taken += hpage_nr_pages(cursor_page);
 				nr_lumpy_taken++;
 				if (PageDirty(cursor_page))
@@ -1245,18 +1248,25 @@ static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 	return nr_taken;
 }
 
-static unsigned long isolate_pages_global(unsigned long nr,
-					struct list_head *dst,
-					unsigned long *scanned, int order,
-					int mode, struct zone *z,
-					int active, int file)
+static unsigned long isolate_pages(unsigned long nr,
+ struct mem_cgroup_zone *mz,
+				   struct list_head *dst,
+
+				   unsigned long *scanned, 
+int order,
+				   isolate_mode_t mode,
+ int active, 
+int file)
 {
+	struct lruvec *lruvec;
 	int lru = LRU_BASE;
+
+	lruvec = mem_cgroup_zone_lruvec(mz->zone, mz->mem_cgroup);
 	if (active)
 		lru += LRU_ACTIVE;
 	if (file)
 		lru += LRU_FILE;
-	return isolate_lru_pages(nr, &z->lruvec.lists[lru], dst,
+	return isolate_lru_pages(nr, &lruvec->lists[lru], dst,
 				 scanned, order, mode, file);
 }
 
@@ -1503,6 +1513,7 @@ shrink_inactive_list(unsigned long nr_to_scan, struct mem_cgroup_zone *mz,
 	unsigned long nr_file;
 	unsigned long nr_dirty = 0;
 	unsigned long nr_writeback = 0;
+	isolate_mode_t reclaim_mode = ISOLATE_INACTIVE;
 	struct zone *zone = mz->zone;
 
 	while (unlikely(too_many_isolated(zone, file, sc))) {
@@ -1514,20 +1525,21 @@ shrink_inactive_list(unsigned long nr_to_scan, struct mem_cgroup_zone *mz,
 	}
 
 	set_reclaim_mode(priority, sc, false);
+	if (sc->reclaim_mode & RECLAIM_MODE_LUMPYRECLAIM)
+		reclaim_mode |= ISOLATE_ACTIVE;
+
 	lru_add_drain();
+
+	if (!sc->may_unmap)
+		reclaim_mode |= ISOLATE_UNMAPPED;
+	if (!sc->may_writepage)
+		reclaim_mode |= ISOLATE_CLEAN;
+
 	spin_lock_irq(&zone->lru_lock);
 
-	if (scanning_global_lru(mz)) {
-		nr_taken = isolate_pages_global(nr_to_scan,
-			&page_list, &nr_scanned, sc->order,
-			sc->reclaim_mode & RECLAIM_MODE_LUMPYRECLAIM ?
-					ISOLATE_BOTH : ISOLATE_INACTIVE,
-			zone, 0, file);
-	} else {
-		nr_taken = mem_cgroup_isolate_pages(nr_to_scan, &page_list,
-			&nr_scanned, sc->order, reclaim_mode, zone,
-			mz->mem_cgroup, 0, file);
-	}
+	nr_taken = isolate_pages(nr_to_scan, mz, &page_list,
+				 &nr_scanned, sc->order,
+				 reclaim_mode, 0, file);
 	if (global_reclaim(sc)) {
 		zone->pages_scanned += nr_scanned;
 		if (current_is_kswapd())
@@ -1627,13 +1639,15 @@ static void move_active_pages_to_lru(struct zone *zone,
 	pagevec_init(&pvec, 1);
 
 	while (!list_empty(list)) {
+		struct lruvec *lruvec;
+
 		page = lru_to_page(list);
 
 		VM_BUG_ON(PageLRU(page));
 		SetPageLRU(page);
 
-		list_move(&page->lru, &zone->lruvec.lists[lru]);
-		mem_cgroup_add_lru_list(page, lru);
+		lruvec = mem_cgroup_lru_add_list(zone, page, lru);
+		list_move(&page->lru, &lruvec->lists[lru]);
 		pgmoved += hpage_nr_pages(page);
 
 		if (!pagevec_add(&pvec, page) || list_empty(list)) {
@@ -1663,21 +1677,21 @@ static void shrink_active_list(unsigned long nr_pages,
 	struct page *page;
 	struct zone_reclaim_stat *reclaim_stat = get_reclaim_stat(mz);
 	unsigned long nr_rotated = 0;
+	isolate_mode_t reclaim_mode = ISOLATE_ACTIVE;
 	struct zone *zone = mz->zone;
 
 	lru_add_drain();
+
+	if (!sc->may_unmap)
+		reclaim_mode |= ISOLATE_UNMAPPED;
+	if (!sc->may_writepage)
+		reclaim_mode |= ISOLATE_CLEAN;
+
 	spin_lock_irq(&zone->lru_lock);
-	if (scanning_global_lru(mz)) {
-		nr_taken = isolate_pages_global(nr_pages, &l_hold,
-						&pgscanned, sc->order,
-						ISOLATE_ACTIVE, zone,
-						1, file);
-	} else {
-		nr_taken = mem_cgroup_isolate_pages(nr_pages, &l_hold,
-						&pgscanned, sc->order,
-						ISOLATE_ACTIVE, zone,
-						mz->mem_cgroup, 1, file);
-	}
+
+	nr_taken = isolate_pages(nr_pages, mz, &l_hold,
+				 &pgscanned, sc->order,
+				 reclaim_mode, 1, file);
 
 	if (global_reclaim(sc))
 		zone->pages_scanned += pgscanned;
@@ -3432,16 +3446,18 @@ int page_evictable(struct page *page, struct vm_area_struct *vma)
  */
 static void check_move_unevictable_page(struct page *page, struct zone *zone)
 {
-	VM_BUG_ON(PageActive(page));
+	struct lruvec *lruvec;
 
+	VM_BUG_ON(PageActive(page));
 retry:
 	ClearPageUnevictable(page);
 	if (page_evictable(page, NULL)) {
 		enum lru_list l = page_lru_base_type(page);
 
 		__dec_zone_state(zone, NR_UNEVICTABLE);
-		list_move(&page->lru, &zone->lruvec.lists[l]);
-		mem_cgroup_move_lists(page, LRU_UNEVICTABLE, l);
+		lruvec = mem_cgroup_lru_move_lists(zone, page,
+						   LRU_UNEVICTABLE, l);
+		list_move(&page->lru, &lruvec->lists[l]);
 		__inc_zone_state(zone, NR_INACTIVE_ANON + l);
 		__count_vm_event(UNEVICTABLE_PGRESCUED);
 	} else {
@@ -3449,8 +3465,9 @@ retry:
 		 * rotate unevictable list
 		 */
 		SetPageUnevictable(page);
-		list_move(&page->lru, &zone->lruvec.lists[LRU_UNEVICTABLE]);
-		mem_cgroup_rotate_lru_list(page, LRU_UNEVICTABLE);
+		lruvec = mem_cgroup_lru_move_lists(zone, page, LRU_UNEVICTABLE,
+						   LRU_UNEVICTABLE);
+		list_move(&page->lru, &lruvec->lists[LRU_UNEVICTABLE]);
 		if (page_evictable(page, NULL))
 			goto retry;
 	}
