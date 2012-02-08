@@ -33,7 +33,6 @@
 #include <linux/bit_spinlock.h>
 #include <linux/rcupdate.h>
 #include <linux/limits.h>
-#include <linux/export.h>
 #include <linux/mutex.h>
 #include <linux/rbtree.h>
 #include <linux/shmem_fs.h>
