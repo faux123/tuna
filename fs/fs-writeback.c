@@ -490,7 +490,6 @@ writeback_single_inode(struct inode *inode, struct bdi_writeback *wb,
 	return ret;
 }
 
-/*
 static long writeback_chunk_size(struct backing_dev_info *bdi,
 				 struct wb_writeback_work *work)
 {
@@ -522,6 +521,7 @@ static long writeback_chunk_size(struct backing_dev_info *bdi,
 	return pages;
 }
 
+/*
  * Write a portion of b_io inodes which belong to @sb.
  *
  * If @only_this_sb is true, then find and write all such
