@@ -537,7 +537,7 @@ bail:
 
 static int dlmfs_create(struct inode *dir,
 			struct dentry *dentry,
-			int mode,
+			umode_t mode,
 			struct nameidata *nd)
 {
 	int status = 0;

@@ -251,7 +251,7 @@ out:
 	return ERR_PTR(err);
 }
 
-static int ubifs_create(struct inode *dir, struct dentry *dentry, int mode,
+static int ubifs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 			struct nameidata *nd)
 {
 	struct inode *inode;
@@ -266,7 +266,7 @@ static int ubifs_create(struct inode *dir, struct dentry *dentry, int mode,
 	 * parent directory inode.
 	 */
 
-	dbg_gen("dent '%.*s', mode %#x in dir ino %lu",
+	dbg_gen("dent '%.*s', mode %#hx in dir ino %lu",
 		dentry->d_name.len, dentry->d_name.name, mode, dir->i_ino);
 
 	err = ubifs_budget_space(c, &req);

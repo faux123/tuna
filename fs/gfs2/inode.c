@@ -756,7 +756,7 @@ fail:
  */
 
 static int gfs2_create(struct inode *dir, struct dentry *dentry,
-		       int mode, struct nameidata *nd)
+		       umode_t mode, struct nameidata *nd)
 {
 	struct inode *inode;
 	int ret;

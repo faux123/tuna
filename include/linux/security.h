@@ -1442,7 +1442,7 @@ struct security_operations {
 				    const struct qstr *qstr, char **name,
 				    void **value, size_t *len);
 	int (*inode_create) (struct inode *dir,
-			     struct dentry *dentry, int mode);
+			     struct dentry *dentry, umode_t mode);
 	int (*inode_link) (struct dentry *old_dentry,
 			   struct inode *dir, struct dentry *new_dentry);
 	int (*inode_unlink) (struct inode *dir, struct dentry *dentry);
@@ -1706,7 +1706,7 @@ void security_inode_free(struct inode *inode);
 int security_inode_init_security(struct inode *inode, struct inode *dir,
 				 const struct qstr *qstr, char **name,
 				 void **value, size_t *len);
-int security_inode_create(struct inode *dir, struct dentry *dentry, int mode);
+int security_inode_create(struct inode *dir, struct dentry *dentry, umode_t mode);
 int security_inode_link(struct dentry *old_dentry, struct inode *dir,
 			 struct dentry *new_dentry);
 int security_inode_unlink(struct inode *dir, struct dentry *dentry);
@@ -2044,7 +2044,7 @@ static inline int security_inode_init_security(struct inode *inode,
 
 static inline int security_inode_create(struct inode *dir,
 					 struct dentry *dentry,
-					 int mode)
+					 umode_t mode)
 {
 	return 0;
 }
