@@ -548,7 +548,6 @@ static void __early_init_mmu(int boot_cpu)
 
 		/* limit memory so we dont have linear faults */
 		memblock_enforce_memory_limit(linear_map_top);
-		memblock_analyze();
 	}
 #endif
 

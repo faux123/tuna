@@ -92,7 +92,6 @@ void __init wii_memory_fixups(void)
 	p[0].size += wii_hole_size + p[1].size;
 
 	memblock.memory.cnt = 1;
-	memblock_analyze();
 
 	/* reserve the hole */
 	memblock_reserve(wii_hole_start, wii_hole_size);

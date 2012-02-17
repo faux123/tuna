@@ -749,7 +749,7 @@ void __init early_init_devtree(void *params)
 	}
 	memblock_enforce_memory_limit(limit);
 
-	memblock_analyze();
+	memblock_allow_resize();
 	memblock_dump_all();
 
 	DBG("Phys. mem: %llx\n", memblock_phys_mem_size());
