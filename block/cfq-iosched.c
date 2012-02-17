@@ -3475,9 +3475,7 @@ static void cfq_put_request(struct request *rq)
 		BUG_ON(!cfqq->allocated[rw]);
 		cfqq->allocated[rw]--;
 
-		put_io_context(RQ_CIC(rq)->icq.ioc, cfqq->cfqd->queue);
-
-		put_io_context(RQ_CIC(rq)->icq.ioc, cfqq->cfqd->queue);
+		put_io_context(RQ_CIC(rq)->icq.ioc);
 
 		/* Put down rq reference on cfqg */
 		cfq_put_cfqg(RQ_CFQG(rq));
