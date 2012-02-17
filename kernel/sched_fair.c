@@ -673,9 +673,21 @@ add_cfs_task_weight(struct cfs_rq *cfs_rq, unsigned long weight)
 {
 	cfs_rq->task_weight += weight;
 }
+
+static void
+sub_add_cfs_task_weight(struct cfs_rq *cfs_rq, unsigned long sub, unsigned long add)
+{
+	cfs_rq->task_weight -= sub;
+	cfs_rq->task_weight += add;
+}
 #else
 static inline void
 add_cfs_task_weight(struct cfs_rq *cfs_rq, unsigned long weight)
+{
+}
+
+static void
+sub_add_cfs_task_weight(struct cfs_rq *cfs_rq, unsigned long sub, unsigned long add)
 {
 }
 #endif
@@ -814,20 +826,24 @@ static inline void update_entity_shares_tick(struct cfs_rq *cfs_rq)
 {
 }
 # endif /* CONFIG_SMP */
+
 static void reweight_entity(struct cfs_rq *cfs_rq, struct sched_entity *se,
 			    unsigned long weight)
 {
+	/* commit outstanding execution time */
+	if (cfs_rq->curr == se)
+		update_curr(cfs_rq);
+
 	if (se->on_rq) {
-		/* commit outstanding execution time */
-		if (cfs_rq->curr == se)
-			update_curr(cfs_rq);
-		account_entity_dequeue(cfs_rq, se);
+		update_load_sub_add(&cfs_rq->load, se->load.weight, weight);
+		if (!parent_entity(se)) {
+			update_load_sub_add(&rq_of(cfs_rq)->load, se->load.weight, weight);
+		}
+		if (entity_is_task(se)) {
+			sub_add_cfs_task_weight(cfs_rq, se->load.weight, weight);
+		}
 	}
-
 	update_load_set(&se->load, weight);
-
-	if (se->on_rq)
-		account_entity_enqueue(cfs_rq, se);
 }
 
 static void update_cfs_shares(struct cfs_rq *cfs_rq)
