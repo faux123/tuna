@@ -845,6 +845,9 @@ struct ext4_inode_info {
 	/* on-disk additional length */
 	__u16 i_extra_isize;
 
+	/* protect page_mkwrite against truncates */
+	struct rw_semaphore truncate_lock;
+
 #ifdef CONFIG_QUOTA
 	/* quota space reservation, managed internally by quota code */
 	qsize_t i_reserved_quota;
