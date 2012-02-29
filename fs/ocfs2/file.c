@@ -2238,7 +2238,6 @@ static ssize_t ocfs2_file_aio_write(struct kiocb *iocb,
 relock:
 	/* to match setattr's i_mutex -> rw_lock ordering */
 	if (direct_io) {
-		atomic_inc(&inode->i_dio_count);
 		have_alloc_sem = 1;
 		/* communicate with ocfs2_dio_end_io */
 		ocfs2_iocb_set_sem_locked(iocb);
@@ -2290,7 +2289,6 @@ relock:
 	 */
 	if (direct_io && !can_do_direct) {
 		ocfs2_rw_unlock(inode, rw_level);
-		inode_dio_done(inode);
 
 		have_alloc_sem = 0;
 		rw_level = -1;
@@ -2377,10 +2375,8 @@ out:
 		ocfs2_rw_unlock(inode, rw_level);
 
 out_sems:
-	if (have_alloc_sem) {
-		inode_dio_done(inode);
+	if (have_alloc_sem)
 		ocfs2_iocb_clear_sem_locked(iocb);
-	}
 
 	mutex_unlock(&inode->i_mutex);
 
@@ -2531,7 +2527,6 @@ static ssize_t ocfs2_file_aio_read(struct kiocb *iocb,
 	 */
 	if (filp->f_flags & O_DIRECT) {
 		have_alloc_sem = 1;
-		atomic_inc(&inode->i_dio_count);
 		ocfs2_iocb_set_sem_locked(iocb);
 
 		ret = ocfs2_rw_lock(inode, 0);
@@ -2573,10 +2568,9 @@ static ssize_t ocfs2_file_aio_read(struct kiocb *iocb,
 	}
 
 bail:
-	if (have_alloc_sem) {
-		inode_dio_done(inode);
+	if (have_alloc_sem)
 		ocfs2_iocb_clear_sem_locked(iocb);
-	}
+
 	if (rw_level != -1)
 		ocfs2_rw_unlock(inode, rw_level);
 
