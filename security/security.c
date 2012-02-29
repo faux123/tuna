@@ -521,13 +521,6 @@ int security_inode_permission(struct inode *inode, int mask)
 	return security_ops->inode_permission(inode, mask, 0);
 }
 
-int security_inode_exec_permission(struct inode *inode, unsigned int flags)
-{
-	if (unlikely(IS_PRIVATE(inode)))
-		return 0;
-	return security_ops->inode_permission(inode, MAY_EXEC, flags);
-}
-
 int security_inode_setattr(struct dentry *dentry, struct iattr *attr)
 {
 	if (unlikely(IS_PRIVATE(dentry->d_inode)))
