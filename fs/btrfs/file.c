@@ -1036,13 +1036,11 @@ out:
  * on error we return an unlocked page and the error value
  * on success we return a locked page and 0
  */
-static int prepare_uptodate_page(struct page *page, u64 pos,
-				 bool force_uptodate)
+static int prepare_uptodate_page(struct page *page, u64 pos)
 {
 	int ret = 0;
 
-	if (((pos & (PAGE_CACHE_SIZE - 1)) || force_uptodate) &&
-	    !PageUptodate(page)) {
+	if ((pos & (PAGE_CACHE_SIZE - 1)) && !PageUptodate(page)) {
 		ret = btrfs_readpage(NULL, page);
 		if (ret)
 			return ret;
@@ -1063,7 +1061,7 @@ static int prepare_uptodate_page(struct page *page, u64 pos,
 static noinline int prepare_pages(struct btrfs_root *root, struct file *file,
 			 struct page **pages, size_t num_pages,
 			 loff_t pos, unsigned long first_index,
-			 size_t write_bytes, bool force_uptodate)
+			 size_t write_bytes)
 {
 	struct extent_state *cached_state = NULL;
 	int i;
@@ -1088,11 +1086,10 @@ again:
 		}
 
 		if (i == 0)
-			err = prepare_uptodate_page(pages[i], pos,
-						    force_uptodate);
+			err = prepare_uptodate_page(pages[i], pos);
 		if (i == num_pages - 1)
 			err = prepare_uptodate_page(pages[i],
-						    pos + write_bytes, false);
+						    pos + write_bytes);
 		if (err) {
 			page_cache_release(pages[i]);
 			faili = i - 1;
@@ -1161,7 +1158,6 @@ static noinline ssize_t __btrfs_buffered_write(struct file *file,
 	size_t num_written = 0;
 	int nrptrs;
 	int ret = 0;
-	bool force_page_uptodate = false;
 
 	nrptrs = min((iov_iter_count(i) + PAGE_CACHE_SIZE - 1) /
 		     PAGE_CACHE_SIZE, PAGE_CACHE_SIZE /
@@ -1204,8 +1200,7 @@ static noinline ssize_t __btrfs_buffered_write(struct file *file,
 		 * contents of pages from loop to loop
 		 */
 		ret = prepare_pages(root, file, pages, num_pages,
-				    pos, first_index, write_bytes,
-				    force_page_uptodate);
+				    pos, first_index, write_bytes);
 		if (ret) {
 			btrfs_delalloc_release_space(inode,
 					num_pages << PAGE_CACHE_SHIFT);
@@ -1222,15 +1217,12 @@ static noinline ssize_t __btrfs_buffered_write(struct file *file,
 		if (copied < write_bytes)
 			nrptrs = 1;
 
-		if (copied == 0) {
-			force_page_uptodate = true;
+		if (copied == 0)
 			dirty_pages = 0;
-		} else {
-			force_page_uptodate = false;
+		else
 			dirty_pages = (copied + offset +
 				       PAGE_CACHE_SIZE - 1) >>
 				       PAGE_CACHE_SHIFT;
-		}
 
 		/*
 		 * If we had a short copy we need to release the excess delaloc
