@@ -1489,7 +1489,7 @@ shmem_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
 	inode = shmem_get_inode(dir->i_sb, dir, mode, dev, VM_NORESERVE);
 	if (inode) {
 		error = security_inode_init_security(inode, dir,
-						     &dentry->d_name, NULL,
+						     &dentry->d_name,
 						     NULL, NULL);
 		if (error) {
 			if (error != -EOPNOTSUPP) {
@@ -1629,7 +1629,7 @@ static int shmem_symlink(struct inode *dir, struct dentry *dentry, const char *s
 	if (!inode)
 		return -ENOSPC;
 
-	error = security_inode_init_security(inode, dir, &dentry->d_name, NULL,
+	error = security_inode_init_security(inode, dir, &dentry->d_name,
 					     NULL, NULL);
 	if (error) {
 		if (error != -EOPNOTSUPP) {
