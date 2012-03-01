@@ -600,7 +600,7 @@ xfs_vn_fiemap(
 }
 
 static const struct inode_operations xfs_inode_operations = {
-	.check_acl		= xfs_check_acl,
+	.get_acl		= xfs_get_acl,
 	.getattr		= xfs_vn_getattr,
 	.setattr		= xfs_vn_setattr,
 	.setxattr		= generic_setxattr,
@@ -626,7 +626,7 @@ static const struct inode_operations xfs_dir_inode_operations = {
 	.rmdir			= xfs_vn_unlink,
 	.mknod			= xfs_vn_mknod,
 	.rename			= xfs_vn_rename,
-	.check_acl		= xfs_check_acl,
+	.get_acl		= xfs_get_acl,
 	.getattr		= xfs_vn_getattr,
 	.setattr		= xfs_vn_setattr,
 	.setxattr		= generic_setxattr,
@@ -651,7 +651,7 @@ static const struct inode_operations xfs_dir_ci_inode_operations = {
 	.rmdir			= xfs_vn_unlink,
 	.mknod			= xfs_vn_mknod,
 	.rename			= xfs_vn_rename,
-	.check_acl		= xfs_check_acl,
+	.get_acl		= xfs_get_acl,
 	.getattr		= xfs_vn_getattr,
 	.setattr		= xfs_vn_setattr,
 	.setxattr		= generic_setxattr,
@@ -664,7 +664,7 @@ static const struct inode_operations xfs_symlink_inode_operations = {
 	.readlink		= generic_readlink,
 	.follow_link		= xfs_vn_follow_link,
 	.put_link		= xfs_vn_put_link,
-	.check_acl		= xfs_check_acl,
+	.get_acl		= xfs_get_acl,
 	.getattr		= xfs_vn_getattr,
 	.setattr		= xfs_vn_setattr,
 	.setxattr		= generic_setxattr,
