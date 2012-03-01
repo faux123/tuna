@@ -761,6 +761,72 @@ out:
 	return err;
 }
 
+static ssize_t ext4_journal_orphan_add(struct inode *inode)
+{
+	struct ext4_inode_info *ei = EXT4_I(inode);
+	handle_t *handle;
+	ssize_t ret;
+
+	/* Credits for sb + inode write */
+	handle = ext4_journal_start(inode, 2);
+	if (IS_ERR(handle)) {
+		ret = PTR_ERR(handle);
+		goto out;
+	}
+	ret = ext4_orphan_add(handle, inode);
+	if (ret) {
+		ext4_journal_stop(handle);
+		goto out;
+	}
+	ei->i_disksize = inode->i_size;
+	ext4_journal_stop(handle);
+out:
+	return ret;
+}
+
+static ssize_t ext4_journal_orphan_del(struct inode *inode, ssize_t ret,
+				       loff_t offset)
+{
+	struct ext4_inode_info *ei = EXT4_I(inode);
+	handle_t *handle;
+	int err;
+
+	/* Credits for sb + inode write */
+	handle = ext4_journal_start(inode, 2);
+	if (IS_ERR(handle)) {
+		/* This is really bad luck. We've written the data
+		 * but cannot extend i_size. Bail out and pretend
+		 * the write failed... */
+		ret = PTR_ERR(handle);
+		if (inode->i_nlink)
+			ext4_orphan_del(NULL, inode);
+
+		goto out;
+	}
+	if (inode->i_nlink)
+		ext4_orphan_del(handle, inode);
+	if (ret > 0) {
+		loff_t end = offset + ret;
+		if (end > inode->i_size) {
+			ei->i_disksize = end;
+			i_size_write(inode, end);
+			/*
+			 * We're going to return a positive `ret'
+			 * here due to non-zero-length I/O, so there's
+			 * no way of reporting error returns from
+			 * ext4_mark_inode_dirty() to userspace.  So
+			 * ignore it.
+			 */
+			ext4_mark_inode_dirty(handle, inode);
+		}
+	}
+	err = ext4_journal_stop(handle);
+	if (ret == 0)
+		ret = err;
+out:
+	return ret;
+}
+
 /*
  * O_DIRECT for ext3 (or indirect map) based files
  *
@@ -779,7 +845,6 @@ ssize_t ext4_ind_direct_IO(int rw, struct kiocb *iocb,
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file->f_mapping->host;
 	struct ext4_inode_info *ei = EXT4_I(inode);
-	handle_t *handle;
 	ssize_t ret;
 	int orphan = 0;
 	size_t count = iov_length(iov, nr_segs);
@@ -789,20 +854,10 @@ ssize_t ext4_ind_direct_IO(int rw, struct kiocb *iocb,
 		loff_t final_size = offset + count;
 
 		if (final_size > inode->i_size) {
-			/* Credits for sb + inode write */
-			handle = ext4_journal_start(inode, 2);
-			if (IS_ERR(handle)) {
-				ret = PTR_ERR(handle);
+			ret =  ext4_journal_orphan_add(inode);
+			if (ret)
 				goto out;
-			}
-			ret = ext4_orphan_add(handle, inode);
-			if (ret) {
-				ext4_journal_stop(handle);
-				goto out;
-			}
 			orphan = 1;
-			ei->i_disksize = inode->i_size;
-			ext4_journal_stop(handle);
 		}
 	}
 
@@ -832,42 +887,68 @@ retry:
 	if (ret == -ENOSPC && ext4_should_retry_alloc(inode->i_sb, &retries))
 		goto retry;
 
-	if (orphan) {
-		int err;
+	if (orphan)
+		ret = ext4_journal_orphan_del(inode, ret, offset);
+out:
+	return ret;
+}
 
-		/* Credits for sb + inode write */
-		handle = ext4_journal_start(inode, 2);
-		if (IS_ERR(handle)) {
-			/* This is really bad luck. We've written the data
-			 * but cannot extend i_size. Bail out and pretend
-			 * the write failed... */
-			ret = PTR_ERR(handle);
-			if (inode->i_nlink)
-				ext4_orphan_del(NULL, inode);
+/*
+ * Like ext4_ind_direct_IO, but operates on bio_vec instead of iovec
+ */
+ssize_t ext4_ind_direct_IO_bvec(int rw, struct kiocb *iocb,
+				struct bio_vec *bvec, loff_t offset,
+				unsigned long bvec_len)
+{
+	struct file *file = iocb->ki_filp;
+	struct inode *inode = file->f_mapping->host;
+	struct ext4_inode_info *ei = EXT4_I(inode);
+	ssize_t ret;
+	int orphan = 0;
+	size_t count = bvec_length(bvec, bvec_len);
+	int retries = 0;
 
-			goto out;
+	if (rw == WRITE) {
+		loff_t final_size = offset + count;
+
+		if (final_size > inode->i_size) {
+			ret =  ext4_journal_orphan_add(inode);
+			if (ret)
+				goto out;
+			orphan = 1;
 		}
-		if (inode->i_nlink)
-			ext4_orphan_del(handle, inode);
-		if (ret > 0) {
-			loff_t end = offset + ret;
-			if (end > inode->i_size) {
-				ei->i_disksize = end;
-				i_size_write(inode, end);
-				/*
-				 * We're going to return a positive `ret'
-				 * here due to non-zero-length I/O, so there's
-				 * no way of reporting error returns from
-				 * ext4_mark_inode_dirty() to userspace.  So
-				 * ignore it.
-				 */
-				ext4_mark_inode_dirty(handle, inode);
-			}
-		}
-		err = ext4_journal_stop(handle);
-		if (ret == 0)
-			ret = err;
 	}
+
+retry:
+	if (rw == READ && ext4_should_dioread_nolock(inode)) {
+		if (unlikely(!list_empty(&ei->i_completed_io_list))) {
+			mutex_lock(&inode->i_mutex);
+			ext4_flush_completed_IO(inode);
+			mutex_unlock(&inode->i_mutex);
+		}
+		ret = __blockdev_direct_IO_bvec(rw, iocb, inode,
+				 inode->i_sb->s_bdev, bvec,
+				 offset, bvec_len,
+				 ext4_get_block, NULL, NULL, 0);
+	} else {
+		ret = blockdev_direct_IO_bvec(rw, iocb, inode,
+				 inode->i_sb->s_bdev, bvec,
+				 offset, bvec_len,
+				 ext4_get_block, NULL);
+
+		if (unlikely((rw & WRITE) && ret < 0)) {
+			loff_t isize = i_size_read(inode);
+			loff_t end = offset + bvec_length(bvec, bvec_len);
+
+			if (end > isize)
+				ext4_truncate_failed_write(inode);
+		}
+	}
+	if (ret == -ENOSPC && ext4_should_retry_alloc(inode->i_sb, &retries))
+		goto retry;
+
+	if (orphan)
+		ret = ext4_journal_orphan_del(inode, ret, offset);
 out:
 	return ret;
 }

@@ -1898,6 +1898,9 @@ extern int ext4_ind_map_blocks(handle_t *handle, struct inode *inode,
 extern ssize_t ext4_ind_direct_IO(int rw, struct kiocb *iocb,
 				const struct iovec *iov, loff_t offset,
 				unsigned long nr_segs);
+extern ssize_t ext4_ind_direct_IO_bvec(int rw, struct kiocb *iocb,
+				struct bio_vec *bvec, loff_t offset,
+				unsigned long bvec_len);
 extern int ext4_ind_calc_metadata_amount(struct inode *inode, sector_t lblock);
 extern int ext4_ind_trans_blocks(struct inode *inode, int nrblocks, int chunk);
 extern void ext4_ind_truncate(struct inode *inode);
