@@ -56,10 +56,10 @@ config PANEL_ACX565AKM
 	help
 	  This is the LCD panel used on Nokia N900
 
-config COLOR_GAMMA_HACK
-    bool "Color Gamma Hack"
+config COLOR_HACK
+    bool "Color Hack"
     depends on PANEL_S6E8AA0
     default y
     ---help---
-        This enables support samoled color hack based on Supercurio work
+        This enables support samoled color hack based on Supercurio work. Fully extracted work from Crespo CM kernel.
 endmenu
