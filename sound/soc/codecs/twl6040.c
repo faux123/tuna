@@ -792,6 +792,12 @@ static int headset_power_mode(struct snd_soc_codec *codec, int high_perf)
 	hslctl = twl6040_read_reg_cache(codec, TWL6040_REG_HSLCTL);
 	hsrctl = twl6040_read_reg_cache(codec, TWL6040_REG_HSRCTL);
 
+	if ((hslctl & TWL6040_HSDACENAL) || (hsrctl & TWL6040_HSDACENAR)) {
+		dev_err(codec->dev,
+			"mode change not allowed when HSDACs are active\n");
+		return -EPERM;
+	}
+
 	if (high_perf) {
 		hslctl &= ~mask;
 		hsrctl &= ~mask;
@@ -877,7 +883,7 @@ static int twl6040_hf_dac_event(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
-static int twl6040_power_mode_event(struct snd_soc_dapm_widget *w,
+static int twl6040_ep_mode_event(struct snd_soc_dapm_widget *w,
 			struct snd_kcontrol *kcontrol, int event)
 {
 	struct snd_soc_codec *codec = w->codec;
@@ -885,21 +891,13 @@ static int twl6040_power_mode_event(struct snd_soc_dapm_widget *w,
 	int ret = 0;
 
 	if (SND_SOC_DAPM_EVENT_ON(event)) {
-		priv->non_lp++;
-		if (!strcmp(w->name, "Earphone Enable")) {
-			/* Earphone doesn't support low power mode */
-			priv->power_mode_forced = 1;
-			ret = headset_power_mode(codec, 1);
-		}
+		/* Earphone doesn't support low power mode */
+		priv->power_mode_forced = 1;
+		ret = headset_power_mode(codec, 1);
 	} else {
-		priv->non_lp--;
-		if (!strcmp(w->name, "Earphone Enable")) {
-			priv->power_mode_forced = 0;
-			ret = headset_power_mode(codec, priv->headset_mode);
-		}
+		priv->power_mode_forced = 0;
+		ret = headset_power_mode(codec, priv->headset_mode);
 	}
-
-	msleep(1);
 
 	return ret;
 }
@@ -1344,10 +1342,11 @@ static const struct snd_soc_dapm_widget twl6040_dapm_widgets[] = {
 			TWL6040_REG_HSRCTL, 2, 0, NULL, 0,
 			pga_event,
 			SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_PRE_PMD),
-	SND_SOC_DAPM_SWITCH_E("Earphone Enable",
-			SND_SOC_NOPM, 0, 0, &ep_driver_switch_controls,
-			twl6040_power_mode_event,
-			SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
+	SND_SOC_DAPM_SWITCH("Earphone Enable",
+			SND_SOC_NOPM, 0, 0, &ep_driver_switch_controls),
+	SND_SOC_DAPM_SUPPLY("Earphone Power Mode", SND_SOC_NOPM, 0, 0,
+			 twl6040_ep_mode_event,
+			 SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
 	SND_SOC_DAPM_OUT_DRV_E("Earphone Driver",
 			SND_SOC_NOPM, 0, 0, NULL, 0,
 			pga_event,
@@ -1395,6 +1394,7 @@ static const struct snd_soc_dapm_route intercon[] = {
 
 	/* Earphone playback path */
 	{"Earphone Enable", "Switch", "HSDAC Left"},
+	{"Earphone Enable", NULL, "Earphone Power Mode"},
 	{"Earphone Driver", NULL, "Earphone Enable"},
 	{"EP", NULL, "Earphone Driver"},
 
