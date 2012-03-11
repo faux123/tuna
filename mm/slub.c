@@ -2213,15 +2213,9 @@ redo:
 		goto new_slab;
 	}
 
-	/* must check again c->freelist in case of cpu migration or IRQ */
-	object = c->freelist;
-	if (object)
-		goto update_freelist;
-
 	stat(s, ALLOC_REFILL);
 
 load_freelist:
-update_freelist:
 	c->freelist = get_freepointer(s, object);
 	c->tid = next_tid(c->tid);
 	local_irq_restore(flags);
