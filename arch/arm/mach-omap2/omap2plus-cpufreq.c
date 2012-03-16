@@ -41,6 +41,11 @@
 #include <mach/hardware.h>
 
 #include "dvfs.h"
+#include "smartreflex.h"
+
+#define MIN_OMAP4460_VDD_CORE_OPP50_UV		 875000
+#define MIN_OMAP4460_VDD_CORE_OPP100_UV		1000000
+#define MIN_OMAP4460_VDD_CORE_OPP100_OV_UV	1100000
 
 #ifdef CONFIG_SMP
 struct lpj_info {
@@ -453,6 +458,12 @@ static ssize_t show_uv_mv_table(struct cpufreq_policy *policy, char *buf)
 	char *out = buf;
 	struct opp *opp_cur;
 
+#if 0
+	/* debugging purposes */
+	struct voltagedomain *mpu_voltdm;
+	mpu_voltdm = voltdm_lookup("mpu");
+#endif
+
 	/* Reverse order sysfs entries for consistency */
 	while(freq_table[i].frequency != CPUFREQ_TABLE_END)
                 i++;
@@ -467,6 +478,13 @@ static ssize_t show_uv_mv_table(struct cpufreq_policy *policy, char *buf)
 			volt_cur = opp_cur->u_volt;
 			out += sprintf(out, "%umhz: %lu mV\n",
 				freq_table[i].frequency/1000, volt_cur/1000);
+
+			/* debugging purposes */
+#if 0
+			pr_info("nominal voltage: %u\n", mpu_voltdm->curr_volt->volt_nominal);
+			pr_info("calibrated voltage: %u\n", mpu_voltdm->curr_volt->volt_calibrated);
+			pr_info("dynamic voltage: %u\n", mpu_voltdm->curr_volt->volt_dynamic_nominal);
+#endif
 		}
 	}
         return out-buf;
@@ -476,15 +494,21 @@ static ssize_t store_uv_mv_table(struct cpufreq_policy *policy,
 	const char *buf, size_t count)
 {
 	int i = 0;
-	unsigned long volt_cur, volt_old;
+	unsigned long volt_cur;
 	int ret;
 	char size_cur[16];
 	struct opp *opp_cur;
 	struct voltagedomain *mpu_voltdm;
+
 	mpu_voltdm = voltdm_lookup("mpu");
+
+	/* critical section -- begin */
+	mutex_lock(&omap_cpufreq_lock);
 
 	while(freq_table[i].frequency != CPUFREQ_TABLE_END)
 		i++;
+
+	omap_sr_disable_reset_volt(mpu_voltdm);
 
 	for(i--; i >= 0; i--) {
 		if(freq_table[i].frequency != CPUFREQ_ENTRY_INVALID) {
@@ -496,21 +520,40 @@ static ssize_t store_uv_mv_table(struct cpufreq_policy *policy,
 			/* Alter voltage. First do it in our opp */
 			opp_cur = opp_find_freq_exact(mpu_dev,
 				freq_table[i].frequency*1000, true);
+
 			opp_cur->u_volt = volt_cur*1000;
 
-			/* Then we need to alter voltage domains */
-			/* Save our old voltage */
-			volt_old = mpu_voltdm->vdd->volt_data[i].volt_nominal;
+			/* find core voltage dependency */
+			switch (mpu_voltdm->vdd->dep_vdd_info->
+				dep_table[i].dep_vdd_volt) {
+
+				/* limit mpu voltage to min core voltage to prevent DVFS stalls */
+				case MIN_OMAP4460_VDD_CORE_OPP50_UV:
+					if (opp_cur->u_volt < MIN_OMAP4460_VDD_CORE_OPP50_UV)
+						opp_cur->u_volt = MIN_OMAP4460_VDD_CORE_OPP50_UV;
+					break;
+				case MIN_OMAP4460_VDD_CORE_OPP100_UV:
+					if (opp_cur->u_volt < MIN_OMAP4460_VDD_CORE_OPP100_UV)
+						opp_cur->u_volt = MIN_OMAP4460_VDD_CORE_OPP100_UV;
+					break;
+				case MIN_OMAP4460_VDD_CORE_OPP100_OV_UV:
+					if (opp_cur->u_volt < MIN_OMAP4460_VDD_CORE_OPP100_OV_UV)
+						opp_cur->u_volt = MIN_OMAP4460_VDD_CORE_OPP100_OV_UV;
+					break;
+				default:
+					pr_err("bad voltage value %lu\n", opp_cur->u_volt);
+					goto bad_uv_err;
+			}
+
 			/* Change our main and dependent voltage tables */
 			mpu_voltdm->vdd->
-				volt_data[i].volt_nominal = volt_cur*1000;
+				volt_data[i].volt_nominal = opp_cur->u_volt;
 			mpu_voltdm->vdd->dep_vdd_info->
-				dep_table[i].main_vdd_volt = volt_cur*1000;
+				dep_table[i].main_vdd_volt = opp_cur->u_volt;
 
-			/* Alter current voltage in voltdm, if appropriate */
-			if(volt_old == mpu_voltdm->curr_volt) {
-				mpu_voltdm->curr_volt = volt_cur*1000;
-			}
+			/* reset calibrated value */
+			mpu_voltdm->vdd->
+				volt_data[i].volt_calibrated = 0;
 
 			/* Non-standard sysfs interface: advance buf */
 			ret = sscanf(buf, "%s", size_cur);
@@ -521,6 +564,15 @@ static ssize_t store_uv_mv_table(struct cpufreq_policy *policy,
 				__func__, freq_table[i].frequency);
 		}
 	}
+
+bad_uv_err:
+	omap_sr_enable(mpu_voltdm, omap_voltage_get_curr_vdata(mpu_voltdm));
+
+	/* critical section -- end */
+	mutex_unlock(&omap_cpufreq_lock);
+
+	pr_warn("faux123: User voltage control activated!\n");
+
 	return count;
 }
 
