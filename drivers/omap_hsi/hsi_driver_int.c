@@ -161,7 +161,7 @@ bool hsi_is_hst_controller_busy(struct hsi_dev *hsi_ctrl)
 }
 
 
-/* Enables the CAWAKE, BREAK, or ERROR interrupt for the given port.
+/* Enables the CAWAKE, BREAK, or ERROR interrupt for the given port
  *
  * Since these 3 interrupts ENABLE and STATUS bits are duplicated in both
  * HSI_Pp_M_IRQr_xxx(channels [0..7]) and HSI_Pp_M_IRQrU_xxx(channels [8..15]),
@@ -408,7 +408,8 @@ static void hsi_do_channel_rx(struct hsi_channel *ch)
 		fifo_words_avail = hsi_get_rx_fifo_occupancy(hsi_ctrl, fifo);
 		if (!fifo_words_avail) {
 			dev_dbg(hsi_ctrl->dev,
-				"RX FIFO %d empty before CPU copy\n", fifo);
+				"WARNING: RX FIFO %d empty before CPU copy\n",
+				fifo);
 
 			/* Do not disable interrupt becaue another interrupt */
 			/* can still come, this time with a real frame. */
@@ -589,7 +590,8 @@ int hsi_do_cawake_process(struct hsi_port *pport)
 static u32 hsi_driver_int_proc(struct hsi_port *pport,
 				unsigned long status_offset,
 				unsigned long enable_offset, unsigned int start,
-				unsigned int stop)
+				unsigned int stop,
+				bool cawake_double_int)
 {
 	struct hsi_dev *hsi_ctrl = pport->hsi_controller;
 	void __iomem *base = hsi_ctrl->base;
@@ -604,12 +606,11 @@ static u32 hsi_driver_int_proc(struct hsi_port *pport,
 	status_reg &= hsi_inl(base, enable_offset);
 
 	/* Check if we need to process an additional CAWAKE interrupt */
-	if (pport->cawake_double_int)
+	if (cawake_double_int)
 		status_reg |= HSI_CAWAKEDETECTED;
 
 	if (pport->cawake_off_event) {
-		dev_dbg(hsi_ctrl->dev, "CAWAKE detected from IO daisy on port "
-				       "%d\n", port);
+		dev_dbg(hsi_ctrl->dev, "CAWAKE detected from OFF mode.\n");
 	} else if (!status_reg) {
 		dev_dbg(hsi_ctrl->dev, "Channels [%d,%d] : no event, exit.\n",
 			start, stop);
@@ -695,6 +696,7 @@ static u32 hsi_process_int_event(struct hsi_port *pport)
 	unsigned int port = pport->port_number;
 	unsigned int irq = pport->n_irq;
 	u32 status_reg;
+	bool cawake_double_int = false;
 
 	/* Clear CAWAKE backup interrupt */
 	hsi_driver_ack_interrupt(pport, HSI_CAWAKEDETECTED, true);
@@ -704,7 +706,8 @@ static u32 hsi_process_int_event(struct hsi_port *pport)
 			    HSI_SYS_MPU_STATUS_REG(port, irq),
 			    HSI_SYS_MPU_ENABLE_REG(port, irq),
 			    0,
-			    min(pport->max_ch, (u8) HSI_SSI_CHANNELS_MAX) - 1);
+			    min(pport->max_ch, (u8) HSI_SSI_CHANNELS_MAX) - 1,
+			    cawake_double_int);
 
 	/* If another CAWAKE interrupt occured while previous is still being
 	 * processed, mark it for extra processing */
@@ -712,17 +715,16 @@ static u32 hsi_process_int_event(struct hsi_port *pport)
 		dev_warn(pport->hsi_controller->dev, "New CAWAKE interrupt "
 			 "detected during interrupt procesing\n");
 		/* Force processing of backup CAWAKE interrupt */
-		pport->cawake_double_int = true;
+		cawake_double_int = true;
 	}
 
 	/* Process events for channels 8..15 or backup interrupt if needed */
-	if ((pport->max_ch > HSI_SSI_CHANNELS_MAX) || pport->cawake_double_int)
+	if ((pport->max_ch > HSI_SSI_CHANNELS_MAX) || cawake_double_int)
 		status_reg |= hsi_driver_int_proc(pport,
 				    HSI_SYS_MPU_U_STATUS_REG(port, irq),
 				    HSI_SYS_MPU_U_ENABLE_REG(port, irq),
-				    HSI_SSI_CHANNELS_MAX, pport->max_ch - 1);
-
-	pport->cawake_double_int = false;
+				    HSI_SSI_CHANNELS_MAX, pport->max_ch - 1,
+				    cawake_double_int);
 
 	return status_reg;
 }
@@ -757,11 +759,11 @@ static irqreturn_t hsi_mpu_handler(int irq, void *p)
 	if (test_and_set_bit(HSI_FLAGS_TASKLET_LOCK, &pport->flags))
 		return IRQ_HANDLED;
 
-	tasklet_hi_schedule(&pport->hsi_tasklet);
+		tasklet_hi_schedule(&pport->hsi_tasklet);
 
 	/* Disable interrupt until Bottom Half has cleared the IRQ status */
 	/* register */
-	disable_irq_nosync(pport->irq);
+		disable_irq_nosync(pport->irq);
 
 	return IRQ_HANDLED;
 }
