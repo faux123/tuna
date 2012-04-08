@@ -68,9 +68,9 @@ enum {
 
 #ifdef CONFIG_COLOR_HACK
 #include <linux/miscdevice.h>
-#define samoled_COLOR_VERSION 1
+#define samoled_COLOR_VERSION 3
 struct omap_dss_device * lcd_;
-int hacky_v1_offset[3] = {60, 60, 60};
+int hacky_v1_offset[3] = {0, 0, 0};
 u32 original_color_adj_original_mults[3];
 struct s6e8aa0_data *mul_copy_data;
 #endif
@@ -770,11 +770,11 @@ static void s6e8aa0_setup_gamma_regs(struct s6e8aa0_data *s6, u8 gamma_regs[],
 			adj = clamp_t(int, adj, adj_min, adj_max);
 		}
 #ifdef CONFIG_COLOR_HACK
-        int iTemp;
-        iTemp = adj + hacky_v1_offset[c] - 60;
-        if ( iTemp >= 255 )
-            iTemp = 254;
-        gamma_regs[gamma_reg_index(c, V1)] = ((iTemp > 0) && (adj <= 255)) ? iTemp : adj;
+        int iAdjHack;
+        iAdjHack = adj + ((hacky_v1_offset[c] * (int)adj) / 100);
+        if (iAdjHack > adj_max)
+            iAdjHack = adj_max;
+        gamma_regs[gamma_reg_index(c, V1)] = iAdjHack;
 #else
 		gamma_regs[gamma_reg_index(c, V1)] = adj;
 #endif
