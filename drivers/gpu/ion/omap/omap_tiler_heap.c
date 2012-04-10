@@ -223,10 +223,20 @@ int omap_tiler_heap_map_user(struct ion_heap *heap, struct ion_buffer *buffer,
 	int i, ret;
 
 	for (i = vma->vm_pgoff; i < n_pages; i++, addr += PAGE_SIZE) {
-		ret = remap_pfn_range(vma, addr,
-				      __phys_to_pfn(info->tiler_addrs[i]),
-				      PAGE_SIZE,
-				      pgprot_noncached(vma->vm_page_prot));
+		/* Use writecombined mappings unless on OMAP5.  If OMAP5, use
+		shared device due to h/w issue. */
+		if (cpu_is_omap54xx())
+			ret = remap_pfn_range(vma, addr,
+				__phys_to_pfn(info->tiler_addrs[i]),
+				PAGE_SIZE,
+				__pgprot_modify(vma->vm_page_prot,
+					L_PTE_MT_MASK, L_PTE_MT_DEV_SHARED));
+		else
+			ret = remap_pfn_range(vma, addr,
+				__phys_to_pfn(info->tiler_addrs[i]),
+				PAGE_SIZE,
+				pgprot_writecombine(vma->vm_page_prot));
+
 		if (ret)
 			return ret;
 	}
