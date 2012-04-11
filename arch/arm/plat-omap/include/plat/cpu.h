@@ -370,6 +370,12 @@ IS_OMAP_TYPE(3517, 0x3517)
 # define cpu_is_omap446x()		is_omap446x()
 # endif
 
+# if !defined(CONFIG_ARCH_OMAP5)
+# define cpu_is_omap54xx()		(0)
+# else
+/* HACK */
+# define cpu_is_omap54xx()		(1)
+# endif
 /* Macros to detect if we have OMAP1 or OMAP2 */
 #define cpu_class_is_omap1()	(cpu_is_omap7xx() || cpu_is_omap15xx() || \
 				cpu_is_omap16xx())
