@@ -400,6 +400,20 @@ static int cpufreq_interactive_up_task(void *data)
 					max_freq = pjcpu->target_freq;
 			}
 
+#ifdef CONFIG_HAS_EARLYSUSPEND
+			/* should we enable auxillary CPUs? */
+			/* only master CPU is alive and Screen is ON */
+			if (num_online_cpus() < 2 && cpufreq_gov_lcd_status_interactive == 1) {
+				/* hot-plug enable 2nd CPU */
+				cpu_up(1);
+				printk("Interactive - Screen ON Hot-plug!\n");
+			/* Both CPUs are up and Screen is OFF */
+			} else if (num_online_cpus() > 1 && cpufreq_gov_lcd_status_interactive == 0) {
+				/* hot-unplug 2nd CPU */
+				cpu_down(1);
+				printk("Interactive - Screen OFF Hot-unplug!\n");
+			}
+#endif
 			if (max_freq != pcpu->policy->cur)
 				__cpufreq_driver_target(pcpu->policy,
 							max_freq,
@@ -444,21 +458,6 @@ static void cpufreq_interactive_freq_down(struct work_struct *work)
 			if (pjcpu->target_freq > max_freq)
 				max_freq = pjcpu->target_freq;
 		}
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-		/* should we enable auxillary CPUs? */
-		/* only master CPU is alive and Screen is ON */
-		if (num_online_cpus() < 2 && cpufreq_gov_lcd_status_interactive == 1) {
-			/* hot-plug enable 2nd CPU */
-			cpu_up(1);
-			printk("Interactive - Screen ON Hot-plug!\n");
-		/* Both CPUs are up and Screen is OFF */
-		} else if (num_online_cpus() > 1 && cpufreq_gov_lcd_status_interactive == 0) {
-			/* hot-unplug 2nd CPU */
-			cpu_down(1);
-			printk("Interactive - Screen OFF Hot-unplug!\n");
-		}
-#endif
 
 		if (max_freq != pcpu->policy->cur)
 			__cpufreq_driver_target(pcpu->policy, max_freq,
