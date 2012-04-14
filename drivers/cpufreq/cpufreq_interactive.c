@@ -90,6 +90,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static struct early_suspend cpufreq_gov_early_suspend;
 static unsigned int cpufreq_gov_lcd_status_interactive;
+static unsigned long stored_timer_rate;
 #endif
 
 #ifndef CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVE
@@ -678,11 +679,20 @@ static struct notifier_block cpufreq_interactive_idle_nb = {
 static void cpufreq_gov_suspend(struct early_suspend *h)
 {
 	cpufreq_gov_lcd_status_interactive = 0;
+	/*
+	 * During passive use-cases, i.e. when display is OFF,
+	 * value of timer, which is used for frequency increasing,
+	 * may be increased. This will significantly reduce the amount
+	 * of OPP switching during passive use-cases.
+	 */
+	stored_timer_rate = timer_rate;
+	timer_rate = DEFAULT_TIMER_RATE * 10;
 }
 
 static void cpufreq_gov_resume(struct early_suspend *h)
 {
 	cpufreq_gov_lcd_status_interactive = 1;
+	timer_rate = stored_timer_rate;
 }
 #endif
 
