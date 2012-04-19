@@ -37,7 +37,7 @@
 #define MAX_SAMPLING_DOWN_FACTOR		(100000)
 #define MICRO_FREQUENCY_DOWN_DIFFERENTIAL	(3)
 #define MICRO_FREQUENCY_UP_THRESHOLD		(75)
-#define MICRO_FREQUENCY_MIN_SAMPLE_RATE		(10000)
+#define MICRO_FREQUENCY_MIN_SAMPLE_RATE		(15000)
 #define MIN_FREQUENCY_UP_THRESHOLD		(11)
 #define MAX_FREQUENCY_UP_THRESHOLD		(100)
 
@@ -66,6 +66,7 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static struct early_suspend cpufreq_gov_early_suspend;
 static unsigned int cpufreq_gov_lcd_status;
+static unsigned long stored_sampling_rate;
 #endif
 
 #ifndef CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND
@@ -875,12 +876,19 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void cpufreq_gov_suspend(struct early_suspend *h)
 {
+	mutex_lock(&dbs_mutex);
 	cpufreq_gov_lcd_status = 0;
+	stored_sampling_rate = min_sampling_rate;
+	min_sampling_rate = MICRO_FREQUENCY_MIN_SAMPLE_RATE * 2;
+	mutex_unlock(&dbs_mutex);
 }
 
 static void cpufreq_gov_resume(struct early_suspend *h)
 {
+	mutex_lock(&dbs_mutex);
 	cpufreq_gov_lcd_status = 1;
+	min_sampling_rate = stored_sampling_rate;
+	mutex_unlock(&dbs_mutex);
 }
 #endif
 
