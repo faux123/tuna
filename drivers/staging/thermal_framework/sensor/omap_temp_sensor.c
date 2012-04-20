@@ -262,13 +262,13 @@ static void omap_configure_temp_sensor_thresholds(struct omap_temp_sensor
 	 * Prevent multiple writing to one time writable register, assuming
 	 * that no one wrote zero into it before.
 	 */
-
+#if 0
 	if (cpu_is_omap447x() &&
 		omap_temp_sensor_readl(temp_sensor, BGAP_TSHUT_OFFSET) != 0) {
 		pr_debug("%s:Shutdown thresholds are already set\n", __func__);
 		return;
 	}
-
+#endif
 	tshut_hot = temp_to_adc_conversion(TSHUT_THRESHOLD_TSHUT_HOT);
 	tshut_cold = temp_to_adc_conversion(TSHUT_THRESHOLD_TSHUT_COLD);
 	if ((tshut_hot == -EINVAL) || (tshut_cold == -EINVAL)) {
@@ -1223,7 +1223,7 @@ static int omap_temp_sensor_resume(struct platform_device *pdev)
 
 void omap_temp_sensor_idle(int idle_state)
 {
-	if (!cpu_is_omap446x() && !cpu_is_omap447x())
+	if (!cpu_is_omap446x())
 		return;
 
 	if (idle_state)
@@ -1279,7 +1279,7 @@ static struct platform_driver omap_temp_sensor_driver = {
 
 int __init omap_temp_sensor_init(void)
 {
-	if (!cpu_is_omap446x() && !cpu_is_omap447x())
+	if (!cpu_is_omap446x())
 		return 0;
 
 	return platform_driver_register(&omap_temp_sensor_driver);

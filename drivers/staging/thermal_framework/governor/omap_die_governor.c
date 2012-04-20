@@ -531,11 +531,13 @@ static int __init omap_die_governor_init(void)
 		omap_gov->gradient_const = OMAP_GRADIENT_CONST_4460;
 		omap_gov->gradient_slope_w_pcb = OMAP_GRADIENT_SLOPE_W_PCB_4460;
 		omap_gov->gradient_const_w_pcb = OMAP_GRADIENT_CONST_W_PCB_4460;
+#if 0
 	} else if (cpu_is_omap447x()) {
 		omap_gov->gradient_slope = OMAP_GRADIENT_SLOPE_4470;
 		omap_gov->gradient_const = OMAP_GRADIENT_CONST_4470;
 		omap_gov->gradient_slope_w_pcb = OMAP_GRADIENT_SLOPE_W_PCB_4470;
 		omap_gov->gradient_const_w_pcb = OMAP_GRADIENT_CONST_W_PCB_4470;
+#endif
 	} else {
 		omap_gov->gradient_slope = 0;
 		omap_gov->gradient_const = 0;
