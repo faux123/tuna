@@ -670,6 +670,7 @@ add_children(struct twl4030_platform_data *pdata, unsigned long features)
 	}
 
 	if (twl_has_madc() && pdata->madc) {
+		pdata->madc->features = features;
 		child = add_child(2, "twl4030_madc",
 				pdata->madc, sizeof(*pdata->madc),
 				true, pdata->irq_base + MADC_INTR_OFFSET, 0);
