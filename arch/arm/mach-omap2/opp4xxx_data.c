@@ -344,21 +344,21 @@ static struct omap_opp_def __initdata omap446x_opp_def_list[] = {
  * omap4_mpu_opp_enable() - helper to enable the OPP
  * @freq:	frequency to enable
  */
-static void __init omap4_mpu_opp_enable(unsigned long freq)
+static void __init omap4_opp_enable(const char *oh_name, unsigned long freq)
 {
-	struct device *mpu_dev;
+	struct device *dev;
 	int r;
 
-	mpu_dev = omap2_get_mpuss_device();
-	if (!mpu_dev) {
-		pr_err("%s: no mpu_dev, did not enable f=%ld\n", __func__,
-			freq);
+	dev = omap_hwmod_name_get_dev(oh_name);
+	if (IS_ERR(dev)) {
+		pr_err("%s: no %s device, did not enable f=%ld\n", __func__,
+			oh_name, freq);
 		return;
 	}
 
-	r = opp_enable(mpu_dev, freq);
+	r = opp_enable(dev, freq);
 	if (r < 0)
-		dev_err(mpu_dev, "%s: opp_enable failed(%d) f=%ld\n", __func__,
+		dev_err(dev, "%s: opp_enable failed(%d) f=%ld\n", __func__,
 			r, freq);
 }
 
@@ -380,14 +380,14 @@ int __init omap4_opp_init(void)
 
 	if (!r) {
 		if (omap4_has_mpu_1_2ghz())
-			omap4_mpu_opp_enable(1200000000);
+			omap4_opp_enable("mpu", 1200000000);
 #ifdef CONFIG_CPU_OVERCLOCK
 		/* The tuna PCB doesn't support 1.5GHz, so disable it for now */
 		/* faux123: OK, then we do 1.35 GHz instead ;) */
 		if (omap4_has_mpu_1_5ghz()) {
-			omap4_mpu_opp_enable(1350000000);
-			omap4_mpu_opp_enable(1420000000);
-			omap4_mpu_opp_enable(1480000000);
+			omap4_opp_enable("mpu", 1350000000);
+			omap4_opp_enable("mpu", 1420000000);
+			omap4_opp_enable("mpu", 1480000000);
 		}
 #endif
 	}
