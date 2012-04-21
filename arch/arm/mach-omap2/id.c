@@ -241,9 +241,10 @@ static void __init omap4_check_features(void)
 		/* High performance device */
 		if (cpu_is_omap443x())
 			omap4_features |= OMAP4_HAS_MPU_1_2GHZ;
-		else if (cpu_is_omap446x() || cpu_is_omap447x())
+		else if (cpu_is_omap446x() || cpu_is_omap447x()) {
 			omap4_features |= OMAP4_HAS_MPU_1_5GHZ;
-
+			omap4_features |= OMAP4_HAS_IVA_500MHZ;
+		}
 		/* Fall through to Standard device features */
 	case OMAP4_SILICON_TYPE_STANDARD:
 	default:
@@ -255,6 +256,10 @@ static void __init omap4_check_features(void)
 #ifdef CONFIG_CPU_OVERCLOCK
 			omap4_features |= OMAP4_HAS_MPU_1_5GHZ;
 #endif
+			omap4_features |= OMAP4_HAS_IVA_430MHZ;
+		} else if (cpu_is_omap447x()) {
+			omap4_features |= OMAP4_HAS_MPU_1_3GHZ;
+			omap4_features |= OMAP4_HAS_IVA_430MHZ;
 		}
 	}
 }
