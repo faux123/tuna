@@ -424,6 +424,15 @@ config OMAP4_PPA_CPU1_ONLINE_BUG
 	  If, on the other hand, you do not understand the change, leave the
 	  default as enabled.
 
+config OMAP4_HSOTG_ED_CORRECTION
+	bool "OMAP 44XX HSOTG Eye diagram correction"
+	depends on ARCH_OMAP4
+	default y
+	help
+	  Select this option to overrive HSOTG PHY settings in
+	  order to improve Eye Diagramm. On 4430 CPUs this should
+	  improve Eye Diagram at least 8%.
+
 endmenu
 
 config FORCE_FAST_CHARGE
