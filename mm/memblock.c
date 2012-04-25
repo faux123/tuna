@@ -560,8 +560,8 @@ void __init_memblock __next_free_mem_range(u64 *idx, int nid,
 {
 	struct memblock_type *mem = &memblock.memory;
 	struct memblock_type *rsv = &memblock.reserved;
-	int mi = *idx & 0xffffffff;
-	int ri = *idx >> 32;
+	unsigned int mi = *idx & 0xffffffff;
+	unsigned int ri = *idx >> 32;
 
 	for ( ; mi < mem->cnt; mi++) {
 		struct memblock_region *m = &mem->regions[mi];
