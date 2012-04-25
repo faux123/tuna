@@ -770,11 +770,10 @@ static void s6e8aa0_setup_gamma_regs(struct s6e8aa0_data *s6, u8 gamma_regs[],
 			adj = clamp_t(int, adj, adj_min, adj_max);
 		}
 #ifdef CONFIG_COLOR_HACK
-        int iAdjHack;
-        iAdjHack = adj + ((hacky_v1_offset[c] * (int)adj) / 100);
-        if (iAdjHack > adj_max)
-            iAdjHack = adj_max;
-        gamma_regs[gamma_reg_index(c, V1)] = iAdjHack;
+        int adj_hack = adj + ((hacky_v1_offset[c] * (int)adj) / 100);
+        if (adj_hack > adj_max)
+            adj_hack = adj_max;
+        gamma_regs[gamma_reg_index(c, V1)] = adj_hack;
 #else
 		gamma_regs[gamma_reg_index(c, V1)] = adj;
 #endif
