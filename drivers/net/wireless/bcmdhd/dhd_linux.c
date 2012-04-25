@@ -309,6 +309,11 @@ uint dhd_console_ms = 0;
 module_param(dhd_console_ms, uint, 0644);
 #endif /* defined(DHD_DEBUG) */
 
+#if defined(CONFIG_HAS_EARLYSUSPEND)
+bool wifi_fast = false;
+module_param(wifi_fast, bool, 0644);
+#endif
+
 /* ARP offload agent mode : Enable ARP Host Auto-Reply and ARP Peer Auto-Reply */
 uint dhd_arp_mode = 0xb;
 module_param(dhd_arp_mode, uint, 0);
@@ -530,6 +535,9 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 	char iovbuf[32];
 	int bcn_li_dtim = 3;
 	uint roamvar = 1;
+
+	if (wifi_fast)
+		power_mode = PM_FAST;
 
 	DHD_TRACE(("%s: enter, value = %d in_suspend=%d\n",
 		__FUNCTION__, value, dhd->in_suspend));
