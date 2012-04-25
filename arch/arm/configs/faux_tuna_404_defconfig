@@ -1,6 +1,6 @@
 #
 # Automatically generated make config: don't edit
-# Linux/arm 3.0.28 Kernel Configuration
+# Linux/arm 3.0.29 Kernel Configuration
 #
 CONFIG_ARM=y
 CONFIG_HAVE_PWM=y
@@ -342,6 +342,7 @@ CONFIG_CPU_OVERCLOCK=y
 CONFIG_GPU_OVERCLOCK=y
 CONFIG_OMAP_FIQ_DEBUGGER=y
 # CONFIG_OMAP4_PPA_CPU1_ONLINE_BUG is not set
+CONFIG_OMAP4_HSOTG_ED_CORRECTION=y
 CONFIG_FORCE_FAST_CHARGE=y
 
 #
@@ -1617,6 +1618,7 @@ CONFIG_TWL6030_MADC=y
 CONFIG_TWL6040_CODEC=y
 # CONFIG_MFD_STMPE is not set
 # CONFIG_MFD_TC3589X is not set
+CONFIG_TWL6030_GPADC=y
 # CONFIG_MFD_TMIO is not set
 # CONFIG_MFD_T7L66XB is not set
 # CONFIG_MFD_TC6387XB is not set
