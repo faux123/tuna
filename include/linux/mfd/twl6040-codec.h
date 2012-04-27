@@ -207,6 +207,7 @@
 /* STATUS (0x2E) fields */
 
 #define TWL6040_PLUGCOMP		0x02
+#define TWL6040_TSHUTDET		0x40
 
 #define TWL6040_CELLS			2
 
@@ -240,6 +241,7 @@ struct twl6040 {
 	int audpwron;
 	int powered;
 	int power_count;
+	int thshut;
 
 	/* PLL configuration */
 	enum twl6040_pll_id pll;
