@@ -947,13 +947,31 @@ static irqreturn_t twl6040_audio_handler(int irq, void *data)
 	struct snd_soc_codec *codec = data;
 	struct twl6040 *twl6040 = codec->control_data;
 	struct twl6040_data *priv = snd_soc_codec_get_drvdata(codec);
-	u8 intid;
+	u8 intid, val;
 
 	intid = twl6040_reg_read(twl6040, TWL6040_REG_INTID);
 
 	if ((intid & TWL6040_PLUGINT) || (intid & TWL6040_UNPLUGINT))
 		queue_delayed_work(priv->workqueue, &priv->delayed_work,
 				   msecs_to_jiffies(200));
+
+	if (intid & TWL6040_HFINT) {
+		val = twl6040_read_reg_volatile(codec, TWL6040_REG_STATUS);
+		if (val & TWL6040_HFLOCDET)
+			dev_err(codec->dev, "Left Handsfree overcurrent\n");
+		if (val & TWL6040_HFROCDET)
+			dev_err(codec->dev, "Right Handsfree overcurrent\n");
+
+		val = twl6040_read_reg_cache(codec, TWL6040_REG_HFLCTL);
+		twl6040_write(codec, TWL6040_REG_HFLCTL,
+				val & ~TWL6040_HFDRVENAL);
+
+		val = twl6040_read_reg_cache(codec, TWL6040_REG_HFRCTL);
+		twl6040_write(codec, TWL6040_REG_HFRCTL,
+				val & ~TWL6040_HFDRVENAR);
+
+		twl6040_report_event(twl6040, TWL6040_HFOC_EVENT);
+	}
 
 	return IRQ_HANDLED;
 }
@@ -1811,6 +1829,14 @@ static int twl6040_probe(struct snd_soc_codec *codec)
 		goto irq_err;
 	}
 
+	ret = twl6040_request_irq(codec->control_data, TWL6040_IRQ_HF,
+				twl6040_audio_handler, 0,
+				"twl6040_irq_hf", codec);
+	if (ret) {
+		dev_err(codec->dev, "HF IRQ request failed: %d\n", ret);
+		goto hfirq_err;
+	}
+
 	/* init vio registers */
 	twl6040_init_vio_regs(codec);
 
@@ -1826,6 +1852,8 @@ static int twl6040_probe(struct snd_soc_codec *codec)
 	return 0;
 
 bias_err:
+	twl6040_free_irq(codec->control_data, TWL6040_IRQ_HF, codec);
+hfirq_err:
 	twl6040_free_irq(codec->control_data, TWL6040_IRQ_PLUG, codec);
 irq_err:
 	destroy_workqueue(priv->ep_workqueue);
@@ -1846,6 +1874,7 @@ static int twl6040_remove(struct snd_soc_codec *codec)
 
 	twl6040_set_bias_level(codec, SND_SOC_BIAS_OFF);
 	twl6040_free_irq(codec->control_data, TWL6040_IRQ_PLUG, codec);
+	twl6040_free_irq(codec->control_data, TWL6040_IRQ_HF, codec);
 	destroy_workqueue(priv->workqueue);
 	destroy_workqueue(priv->hf_workqueue);
 	destroy_workqueue(priv->hs_workqueue);
