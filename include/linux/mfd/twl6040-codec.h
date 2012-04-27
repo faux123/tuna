@@ -246,6 +246,7 @@ struct twl6040 {
 	unsigned int sysclk;
 	unsigned int mclk;
 	int icrev;
+	u8 cache[TWL6040_CACHEREGNUM];
 
 	unsigned int irq;
 	unsigned int irq_base;
