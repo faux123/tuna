@@ -384,6 +384,7 @@ config CPU_FREQ_MIN
 
 config PRE_UNDERVOLT
 	bool "Enable CPU compiled time undervolting on OMAP"
+	depends on !OMAP_SMARTREFLEX_CLASS1P5
 	default n
 	help
 	  Enable CPU compiled time undervolting on OMAP
@@ -402,6 +403,7 @@ config GPU_OVERCLOCK
 
 config VOLTAGE_CONTROL
 	bool "Enable MPU Votlage Control on OMAP"
+	depends on !OMAP_SMARTREFLEX_CLASS1P5
 	default n
 	help
 	  Enables MPU voltage control on OMAP
