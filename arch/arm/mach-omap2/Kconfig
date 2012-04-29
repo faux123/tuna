@@ -400,6 +400,12 @@ config GPU_OVERCLOCK
 	help
 	  Enables CPU Overclocking on OMAP
 
+config VOLTAGE_CONTROL
+	bool "Enable MPU Votlage Control on OMAP"
+	default n
+	help
+	  Enables MPU voltage control on OMAP
+
 config OMAP_FIQ_DEBUGGER
 	bool "Enable the serial FIQ debugger on OMAP"
 	default y
