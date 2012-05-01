@@ -173,6 +173,14 @@ static void sr_class1p5_calib_work(struct work_struct *work)
 
 	volt_data = work_data->vdata;
 
+	/* check for SR_bypass */
+	if (volt_data->sr_bypass) {
+		pr_warn("%s: %s: SR 1.5 skipped: Voltage Nominal=%d\n",
+			 __func__, voltdm->name, volt_data->volt_nominal);
+		mutex_unlock(&omap_dvfs_lock);
+		return;
+	}
+
 	work_data->num_calib_triggers++;
 	/* if we are triggered first time, we need to start isr to sample */
 	if (work_data->num_calib_triggers == 1) {
@@ -407,6 +415,10 @@ static int sr_class1p5_enable(struct voltagedomain *voltdm,
 {
 	int r;
 	struct sr_class1p5_work_data *work_data;
+
+	/* check bypass flag, if enabled, do nothing */
+	if (volt_data->sr_bypass)
+		return 0;
 
 	if (IS_ERR_OR_NULL(voltdm) || IS_ERR_OR_NULL(volt_data)) {
 		pr_err("%s: bad parameters!\n", __func__);
