@@ -47,6 +47,7 @@ struct cpuidle_state {
 
 /* Idle State Flags */
 #define CPUIDLE_FLAG_TIME_VALID	(0x01) /* is residency time measurable? */
+#define CPUIDLE_FLAG_COUPLED	(0x02) /* state applies to multiple cpus */
 
 #define CPUIDLE_DRIVER_FLAGS_MASK (0xFFFF0000)
 
@@ -93,6 +94,12 @@ struct cpuidle_device {
 	struct completion	kobj_unregister;
 	void			*governor_data;
 	struct cpuidle_state	*safe_state;
+
+#ifdef CONFIG_ARCH_NEEDS_CPU_IDLE_COUPLED
+	int			safe_state_index;
+	cpumask_t		coupled_cpus;
+	struct cpuidle_coupled	*coupled;
+#endif
 };
 
 DECLARE_PER_CPU(struct cpuidle_device *, cpuidle_devices);

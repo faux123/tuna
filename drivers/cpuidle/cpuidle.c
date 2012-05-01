@@ -64,7 +64,11 @@ int cpuidle_enter_state(struct cpuidle_device *dev, struct cpuidle_driver *drv,
 {
 	int entered_state;
 
-	entered_state = cpuidle_enter_state(dev, drv, next_state);
+	if (cpuidle_state_is_coupled(dev, drv, next_state))
+		entered_state = cpuidle_enter_state_coupled(dev, drv,
+							    next_state);
+	else
+		entered_state = cpuidle_enter_state(dev, drv, next_state);
 
 	return entered_state;
 }
@@ -347,9 +351,16 @@ static int __cpuidle_register_device(struct cpuidle_device *dev)
 	if (ret)
 		goto err_sysfs;
 
+	ret = cpuidle_coupled_register_device(dev);
+	if (ret)
+		goto err_coupled;
+
 	dev->registered = 1;
 	return 0;
 
+err_coupled:
+	cpuidle_remove_sysfs(sys_dev);
+	wait_for_completion(&dev->kobj_unregister);
 err_sysfs:
 	list_del(&dev->device_list);
 	per_cpu(cpuidle_devices, dev->cpu) = NULL;
@@ -403,6 +414,8 @@ void cpuidle_unregister_device(struct cpuidle_device *dev)
 	list_del(&dev->device_list);
 	wait_for_completion(&dev->kobj_unregister);
 	per_cpu(cpuidle_devices, dev->cpu) = NULL;
+
+	cpuidle_coupled_unregister_device(dev);
 
 	cpuidle_resume_and_unlock();
 
