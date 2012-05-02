@@ -20,4 +20,4 @@ config CPU_IDLE_GOV_MENU
 	default y
 
 config ARCH_NEEDS_CPU_IDLE_COUPLED
-	def_bool n
+	def_bool y
