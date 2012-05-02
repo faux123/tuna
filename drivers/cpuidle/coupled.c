@@ -181,7 +181,7 @@ void cpuidle_coupled_parallel_barrier(struct cpuidle_device *dev, atomic_t *a)
 bool cpuidle_state_is_coupled(struct cpuidle_device *dev,
 	struct cpuidle_driver *drv, int state)
 {
-	return drv->states[state].flags & CPUIDLE_FLAG_COUPLED;
+	return dev->states[state].flags & CPUIDLE_FLAG_COUPLED;
 }
 
 /**
