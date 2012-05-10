@@ -353,6 +353,13 @@ int omap4460_mpu_dpll_set_rate(struct clk *clk, unsigned long rate)
 	/* anything @ or below 1.35 GHz, disable DCC to save battery */
 	if (rate <= OMAP_1_35GHz) {
 
+		/*
+		 * We need to update MPU DPLL trim value for
+		 * increase maximum working frequency
+		 * For this we using some magic numbers
+		 */
+		__raw_writel(0x28, OMAP2_L4_IO_ADDRESS(0x4A002330));
+
 		/* If DCC is enabled, disable it */
 		v = __raw_readl(dd->mult_div1_reg);
 		if (v & OMAP4460_DCC_EN_MASK) {
