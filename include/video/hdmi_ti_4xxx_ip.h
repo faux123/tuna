@@ -21,6 +21,8 @@
 #ifndef _HDMI_TI_4xxx_
 #define _HDMI_TI_4xxx_
 
+#include <video/cec.h>
+
 #define HDMI_HPD_LOW		0x10
 #define HDMI_HPD_HIGH		0x20
 #define HDMI_BCAP		0x40
@@ -355,28 +357,6 @@ enum hdmi_core_infoframe {
 	HDMI_INFOFRAME_AUDIO_DB2SS_24BIT = 3,
 	HDMI_INFOFRAME_AUDIO_DB5_DM_INH_PERMITTED = 0,
 	HDMI_INFOFRAME_AUDIO_DB5_DM_INH_PROHIBITED = 1
-};
-struct cec_dev {
-	int device_id;
-	int clear_existing_device;
-	int phy_addr;
-};
-
-struct cec_tx_data {
-	char   dest_device_id;
-	char   initiator_device_id;
-	char   send_ping;
-	char   retry_count;
-	char   tx_cmd;
-	char   tx_count;
-	char   tx_operand[15];
-};
-struct cec_rx_data {
-	char   init_device_id;
-	char   dest_device_id;
-	char   rx_cmd;
-	char   rx_count;
-	char   rx_operand[15];
 };
 
 
