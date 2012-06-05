@@ -91,7 +91,7 @@ label_smc:
 	/* Write Count Enable Clear Register */
 	mcr	p15, 0x0, r4, c9, c12, 2
 #endif
-
+	.arch_extension sec
 	smc	#0
 	b	service_end
 	nop
