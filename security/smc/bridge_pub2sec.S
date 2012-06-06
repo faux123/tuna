@@ -42,6 +42,16 @@
 #define INVALIDATE_BTB
 #endif
 
+#if defined(__GNUC__) && \
+	defined(__GNUC_MINOR__) && \
+	defined(__GNUC_PATCHLEVEL__) && \
+	((__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)) \
+		>= 40502
+#define USE_ARCH_EXTENSION_SEC 1
+#else
+#define USE_ARCH_EXTENSION_SEC 0
+#endif
+
 schedule_secure_world:
 	.global schedule_secure_world
 
@@ -91,7 +101,9 @@ label_smc:
 	/* Write Count Enable Clear Register */
 	mcr	p15, 0x0, r4, c9, c12, 2
 #endif
+#if USE_ARCH_EXTENSION_SEC
 	.arch_extension sec
+#endif
 	smc	#0
 	b	service_end
 	nop
