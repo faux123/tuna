@@ -917,6 +917,12 @@ int omap_dm_timers_active(void)
 }
 EXPORT_SYMBOL_GPL(omap_dm_timers_active);
 
+void omap_dm_timer_save_context(struct omap_dm_timer *timer)
+{
+	omap_timer_save_context(timer);
+}
+EXPORT_SYMBOL_GPL(omap_dm_timer_save_context);
+
 /**
  * omap_dm_timer_probe - probe function called for every registered device
  * @pdev:	pointer to current timer platform device
