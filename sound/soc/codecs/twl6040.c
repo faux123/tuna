@@ -82,7 +82,6 @@ struct twl6040_jack_data {
 struct twl6040_data {
 	int codec_powered;
 	int pll;
-	int non_lp;
 	int power_mode_forced;
 	int headset_mode;
 	unsigned int clk_in;
@@ -737,10 +736,6 @@ static int pga_event(struct snd_soc_dapm_widget *w,
 		out->left_step = priv->hf_left_step;
 		out->right_step = priv->hf_right_step;
 		out->step_delay = 5;	/* 5 ms between volume ramp steps */
-		if (SND_SOC_DAPM_EVENT_ON(event))
-			priv->non_lp++;
-		else
-			priv->non_lp--;
 		break;
 	default:
 		return -1;
@@ -1579,25 +1574,6 @@ static int twl6040_prepare(struct snd_pcm_substream *substream,
 		dev_err(codec->dev,
 			"no mclk configured, call set_sysclk() on init\n");
 		return -EINVAL;
-	}
-
-	/*
-	 * capture is not supported at 17.64 MHz,
-	 * it's reserved for headset low-power playback scenario
-	 */
-	if ((priv->sysclk == 17640000) &&
-			substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
-		dev_err(codec->dev,
-			"capture mode is not supported at %dHz\n",
-			priv->sysclk);
-		return -EINVAL;
-	}
-
-	if ((priv->sysclk == 17640000) && priv->non_lp) {
-			dev_err(codec->dev,
-				"some enabled paths aren't supported at %dHz\n",
-				priv->sysclk);
-			return -EPERM;
 	}
 
 	/*
