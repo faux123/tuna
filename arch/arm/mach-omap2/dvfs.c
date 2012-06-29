@@ -778,8 +778,17 @@ static int _dvfs_scale(struct device *req_dev, struct device *target_dev,
 		}
 	}
 
-	/* Now decide on switching OPP */
+	if (voltdm->abb && omap_get_nominal_voltage(new_vdata) >
+			omap_get_nominal_voltage(curr_vdata)) {
+		ret = omap_ldo_abb_pre_scale(voltdm, new_vdata);
+		if (ret) {
+			pr_err("%s: ABB prescale failed for vdd%s: %d\n",
+			__func__, voltdm->name, ret);
+			goto fail;
+		}
+	}
 
+	/* Now decide on switching OPP */
 	if (curr_volt == new_volt) {
 		volt_scale_dir = DVFS_VOLT_SCALE_NONE;
 	} else if (curr_volt < new_volt) {
@@ -793,16 +802,18 @@ static int _dvfs_scale(struct device *req_dev, struct device *target_dev,
 		volt_scale_dir = DVFS_VOLT_SCALE_UP;
 	}
 
-	/*
-	 * Move all devices in list to the required frequencies.
-	 * Devices are put in list in strict order, such as, when
-	 * scaling up to higher OPP, dependent frequencies will be scaled
-	 * after the frequency on which they depend. In case of scaling
-	 * down to lower OPP the order of scaling frequencies is reverse.
-	 */
-	dev_list = (volt_scale_dir == DVFS_VOLT_SCALE_DOWN) ?
-			tdvfs_info->dev_list.prev : tdvfs_info->dev_list.next;
-	while (dev_list != &tdvfs_info->dev_list) {
+	if (voltdm->abb && omap_get_nominal_voltage(new_vdata) >
+			omap_get_nominal_voltage(curr_vdata)) {
+		ret = omap_ldo_abb_post_scale(voltdm, new_vdata);
+		if (ret) {
+			pr_err("%s: ABB prescale failed for vdd%s: %d\n",
+			__func__, voltdm->name, ret);
+			goto fail;
+		}
+	}
+
+	/* Move all devices in list to the required frequencies */
+	list_for_each_entry(temp_dev, &tdvfs_info->dev_list, node) {
 		struct device *dev;
 		struct opp *opp;
 		unsigned long freq = 0;
@@ -851,8 +862,26 @@ next:
 	if (ret)
 		goto fail;
 
+	if (voltdm->abb && omap_get_nominal_voltage(new_vdata) <
+			omap_get_nominal_voltage(curr_vdata)) {
+		ret = omap_ldo_abb_pre_scale(voltdm, new_vdata);
+		if (ret) {
+			pr_err("%s: ABB prescale failed for vdd%s: %d\n",
+			__func__, voltdm->name, ret);
+			goto fail;
+		}
+	}
+
 	if (DVFS_VOLT_SCALE_DOWN == volt_scale_dir)
 		voltdm_scale(voltdm, new_vdata);
+
+	if (voltdm->abb && omap_get_nominal_voltage(new_vdata) <
+			omap_get_nominal_voltage(curr_vdata)) {
+		ret = omap_ldo_abb_post_scale(voltdm, new_vdata);
+		if (ret)
+			pr_err("%s: ABB postscale failed for vdd%s: %d\n",
+			__func__, voltdm->name, ret);
+	}
 
 	/* Make a decision to scale dependent domain based on nominal voltage */
 	if (omap_get_nominal_voltage(new_vdata) <
