@@ -1,6 +1,6 @@
 #
 # Automatically generated make config: don't edit
-# Linux/arm 3.0.34 Kernel Configuration
+# Linux/arm 3.0.36 Kernel Configuration
 #
 CONFIG_ARM=y
 CONFIG_HAVE_PWM=y
@@ -112,7 +112,7 @@ CONFIG_RD_GZIP=y
 # CONFIG_RD_LZMA is not set
 CONFIG_RD_XZ=y
 # CONFIG_RD_LZO is not set
-# CONFIG_CC_OPTIMIZE_FOR_SIZE is not set
+CONFIG_CC_OPTIMIZE_FOR_SIZE=y
 CONFIG_SYSCTL=y
 CONFIG_ANON_INODES=y
 CONFIG_PANIC_TIMEOUT=5
@@ -1325,7 +1325,6 @@ CONFIG_KEYBOARD_ATKBD=y
 CONFIG_KEYBOARD_OMAP4=y
 # CONFIG_KEYBOARD_TWL4030 is not set
 # CONFIG_KEYBOARD_XTKBD is not set
-CONFIG_KEYBOARD_CEC=y
 # CONFIG_INPUT_MOUSE is not set
 # CONFIG_INPUT_JOYSTICK is not set
 # CONFIG_INPUT_TABLET is not set
