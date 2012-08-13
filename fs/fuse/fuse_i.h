@@ -296,8 +296,16 @@ struct fuse_req {
 	/** number of pages in vector */
 	unsigned num_pages;
 
-	/** offset of data on first page */
-	unsigned page_offset;
+	/** If set, it describes layout of user-data in pages[] */
+	const struct iovec *iovec;
+
+	union {
+		/** offset of data on first page */
+		unsigned page_offset;
+
+		/** or in first iovec */
+		unsigned iov_offset;
+	};
 
 	/** File used in the request (or NULL) */
 	struct fuse_file *ff;

@@ -854,9 +854,9 @@ static int fuse_copy_page(struct fuse_copy_state *cs, struct page **pagep,
 	return 0;
 }
 
-/* Copy pages in the request to/from userspace buffer */
-static int fuse_copy_pages(struct fuse_copy_state *cs, unsigned nbytes,
-			   int zeroing)
+/* Start from addr(pages[0]) + page_offset. No holes in the middle. */
+static int fuse_copy_pages_for_buf(struct fuse_copy_state *cs, unsigned nbytes,
+				   int zeroing)
 {
 	unsigned i;
 	struct fuse_req *req = cs->req;
@@ -876,6 +876,52 @@ static int fuse_copy_pages(struct fuse_copy_state *cs, unsigned nbytes,
 		offset = 0;
 	}
 	return 0;
+}
+
+/* Take iov_offset as offset in iovec[0]. Iterate based on iovec[].iov_len */
+static int fuse_copy_pages_for_iovec(struct fuse_copy_state *cs,
+				     unsigned nbytes, int zeroing)
+{
+	unsigned i;
+	struct fuse_req *req = cs->req;
+	const struct iovec *iov = req->iovec;
+	unsigned iov_offset = req->iov_offset;
+
+	for (i = 0; i < req->num_pages && (nbytes || zeroing); i++) {
+		int err;
+		unsigned long user_addr = (unsigned long)iov->iov_base +
+					  iov_offset;
+		unsigned offset = user_addr & ~PAGE_MASK;
+		unsigned count = min_t(size_t, PAGE_SIZE - offset,
+				       iov->iov_len - iov_offset);
+		count = min(nbytes, count);
+
+		err = fuse_copy_page(cs, &req->pages[i], offset, count,
+				     zeroing);
+		if (err)
+			return err;
+
+		nbytes -= count;
+
+		if (count < iov->iov_len - iov_offset) {
+			iov_offset += count;
+		} else {
+			iov++;
+			iov_offset = 0;
+		}
+	}
+
+	return 0;
+}
+
+/* Copy pages in the request to/from userspace buffer */
+static int fuse_copy_pages(struct fuse_copy_state *cs, unsigned nbytes,
+			   int zeroing)
+{
+	if (cs->req->iovec)
+		return fuse_copy_pages_for_iovec(cs, nbytes, zeroing);
+	else
+		return fuse_copy_pages_for_buf(cs, nbytes, zeroing);
 }
 
 /* Copy a single argument in the request to/from userspace buffer */
