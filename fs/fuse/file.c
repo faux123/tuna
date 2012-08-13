@@ -1055,8 +1055,9 @@ static int fuse_get_user_pages(struct fuse_req *req,
 	return 0;
 }
 
-ssize_t fuse_direct_io(struct file *file, const char __user *buf,
-		       size_t count, loff_t *ppos, int write)
+static ssize_t __fuse_direct_io(struct file *file, const struct iovec *iov,
+				unsigned long nr_segs, size_t count,
+				loff_t *ppos, int write)
 {
 	struct fuse_file *ff = file->private_data;
 	struct fuse_conn *fc = ff->fc;
@@ -1064,6 +1065,7 @@ ssize_t fuse_direct_io(struct file *file, const char __user *buf,
 	loff_t pos = *ppos;
 	ssize_t res = 0;
 	struct fuse_req *req;
+	size_t iov_offset = 0;
 
 	req = fuse_get_req(fc);
 	if (IS_ERR(req))
@@ -1073,7 +1075,8 @@ ssize_t fuse_direct_io(struct file *file, const char __user *buf,
 		size_t nres;
 		fl_owner_t owner = current->files;
 		size_t nbytes = min(count, nmax);
-		int err = fuse_get_user_pages(req, buf, &nbytes, write);
+		int err = fuse_get_user_pages(req, &iov, &nr_segs, &iov_offset,
+					      &nbytes, write);
 		if (err) {
 			res = err;
 			break;
@@ -1096,7 +1099,6 @@ ssize_t fuse_direct_io(struct file *file, const char __user *buf,
 		count -= nres;
 		res += nres;
 		pos += nres;
-		buf += nres;
 		if (nres != nbytes)
 			break;
 		if (count) {
@@ -1112,6 +1114,13 @@ ssize_t fuse_direct_io(struct file *file, const char __user *buf,
 		*ppos = pos;
 
 	return res;
+}
+
+ssize_t fuse_direct_io(struct file *file, const char __user *buf,
+		       size_t count, loff_t *ppos, int write)
+{
+	struct iovec iov = { .iov_base = (void *)buf, .iov_len = count };
+	return __fuse_direct_io(file, &iov, 1, count, ppos, write);
 }
 EXPORT_SYMBOL_GPL(fuse_direct_io);
 
