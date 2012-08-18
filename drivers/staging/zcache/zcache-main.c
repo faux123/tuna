@@ -55,7 +55,7 @@ static inline void frontswap_tmem_exclusive_gets(bool b)
 }
 #endif
 
-static int zcache_enabled __read_mostly = true;
+static int zcache_enabled __read_mostly;
 static int disable_cleancache __read_mostly;
 static int disable_frontswap __read_mostly;
 static int disable_frontswap_ignore_nonactive __read_mostly;
