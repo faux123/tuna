@@ -815,8 +815,8 @@ ShrinkPagePool(struct shrinker *psShrinker, struct shrink_control *psShrinkContr
 	{
 		LinuxPagePoolEntry *psPagePoolEntry, *psTempPoolEntry;
 
-		PVR_TRACE(("%s: Number to scan: %ld", __FUNCTION__, uNumToScan));
-		PVR_TRACE(("%s: Pages in pool before scan: %d", __FUNCTION__, atomic_read(&g_sPagePoolEntryCount)));
+		//PVR_TRACE(("%s: Number to scan: %ld", __FUNCTION__, uNumToScan));
+		//PVR_TRACE(("%s: Pages in pool before scan: %d", __FUNCTION__, atomic_read(&g_sPagePoolEntryCount)));
 
 		if (!PagePoolTrylock())
 		{
@@ -844,7 +844,7 @@ ShrinkPagePool(struct shrinker *psShrinker, struct shrink_control *psShrinkContr
 
 		PagePoolUnlock();
 
-		PVR_TRACE(("%s: Pages in pool after scan: %d", __FUNCTION__, atomic_read(&g_sPagePoolEntryCount)));
+		//PVR_TRACE(("%s: Pages in pool after scan: %d", __FUNCTION__, atomic_read(&g_sPagePoolEntryCount)));
 	}
 
 	return atomic_read(&g_sPagePoolEntryCount);
