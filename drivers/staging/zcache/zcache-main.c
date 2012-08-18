@@ -192,53 +192,53 @@ static int zcache_debugfs_init(void)
 	if (root == NULL)
 		return -ENXIO;
 
-	zdfs("obj_count", S_IRUGO, root, (size_t *)&zcache_obj_count);
-	zdfs("obj_count_max", S_IRUGO, root, (size_t *)&zcache_obj_count_max);
-	zdfs("objnode_count", S_IRUGO, root, (size_t *)&zcache_objnode_count);
-	zdfs("objnode_count_max", S_IRUGO, root, (size_t *)&zcache_objnode_count_max);
-	zdfs("flush_total", S_IRUGO, root, (size_t *)&zcache_flush_total);
-	zdfs("flush_found", S_IRUGO, root, (size_t *)&zcache_flush_found);
-	zdfs("flobj_total", S_IRUGO, root, (size_t *)&zcache_flobj_total);
-	zdfs("flobj_found", S_IRUGO, root, (size_t *)&zcache_flobj_found);
-	zdfs("failed_eph_puts", S_IRUGO, root, (size_t *)&zcache_failed_eph_puts);
-	zdfs("failed_pers_puts", S_IRUGO, root, (size_t *)&zcache_failed_pers_puts);
+	zdfs("obj_count", S_IRUGO, root, &zcache_obj_count);
+	zdfs("obj_count_max", S_IRUGO, root, &zcache_obj_count_max);
+	zdfs("objnode_count", S_IRUGO, root, &zcache_objnode_count);
+	zdfs("objnode_count_max", S_IRUGO, root, &zcache_objnode_count_max);
+	zdfs("flush_total", S_IRUGO, root, &zcache_flush_total);
+	zdfs("flush_found", S_IRUGO, root, &zcache_flush_found);
+	zdfs("flobj_total", S_IRUGO, root, &zcache_flobj_total);
+	zdfs("flobj_found", S_IRUGO, root, &zcache_flobj_found);
+	zdfs("failed_eph_puts", S_IRUGO, root, &zcache_failed_eph_puts);
+	zdfs("failed_pers_puts", S_IRUGO, root, &zcache_failed_pers_puts);
 	zdfs("failed_get_free_pages", S_IRUGO, root,
-				(size_t *)&zcache_failed_getfreepages);
-	zdfs("failed_alloc", S_IRUGO, root, (size_t *)&zcache_failed_alloc);
-	zdfs("put_to_flush", S_IRUGO, root, (size_t *)&zcache_put_to_flush);
-	zdfs("compress_poor", S_IRUGO, root, (size_t *)&zcache_compress_poor);
-	zdfs("mean_compress_poor", S_IRUGO, root, (size_t *)&zcache_mean_compress_poor);
-	zdfs("eph_ate_tail", S_IRUGO, root, (size_t *)&zcache_eph_ate_tail);
-	zdfs("eph_ate_tail_failed", S_IRUGO, root, (size_t *)&zcache_eph_ate_tail_failed);
-	zdfs("pers_ate_eph", S_IRUGO, root, (size_t *)&zcache_pers_ate_eph);
-	zdfs("pers_ate_eph_failed", S_IRUGO, root, (size_t *)&zcache_pers_ate_eph_failed);
-	zdfs("evicted_eph_zpages", S_IRUGO, root, (size_t *)&zcache_evicted_eph_zpages);
+				&zcache_failed_getfreepages);
+	zdfs("failed_alloc", S_IRUGO, root, &zcache_failed_alloc);
+	zdfs("put_to_flush", S_IRUGO, root, &zcache_put_to_flush);
+	zdfs("compress_poor", S_IRUGO, root, &zcache_compress_poor);
+	zdfs("mean_compress_poor", S_IRUGO, root, &zcache_mean_compress_poor);
+	zdfs("eph_ate_tail", S_IRUGO, root, &zcache_eph_ate_tail);
+	zdfs("eph_ate_tail_failed", S_IRUGO, root, &zcache_eph_ate_tail_failed);
+	zdfs("pers_ate_eph", S_IRUGO, root, &zcache_pers_ate_eph);
+	zdfs("pers_ate_eph_failed", S_IRUGO, root, &zcache_pers_ate_eph_failed);
+	zdfs("evicted_eph_zpages", S_IRUGO, root, &zcache_evicted_eph_zpages);
 	zdfs("evicted_eph_pageframes", S_IRUGO, root,
-				(size_t *)&zcache_evicted_eph_pageframes);
-	zdfs("eph_pageframes", S_IRUGO, root, (size_t *)&zcache_eph_pageframes);
-	zdfs("eph_pageframes_max", S_IRUGO, root, (size_t *)&zcache_eph_pageframes_max);
-	zdfs("pers_pageframes", S_IRUGO, root, (size_t *)&zcache_pers_pageframes);
-	zdfs("pers_pageframes_max", S_IRUGO, root, (size_t *)&zcache_pers_pageframes_max);
-	zdfs("eph_zpages", S_IRUGO, root, (size_t *)&zcache_eph_zpages);
-	zdfs("eph_zpages_max", S_IRUGO, root, (size_t *)&zcache_eph_zpages_max);
-	zdfs("pers_zpages", S_IRUGO, root, (size_t *)&zcache_pers_zpages);
-	zdfs("pers_zpages_max", S_IRUGO, root, (size_t *)&zcache_pers_zpages_max);
+				&zcache_evicted_eph_pageframes);
+	zdfs("eph_pageframes", S_IRUGO, root, &zcache_eph_pageframes);
+	zdfs("eph_pageframes_max", S_IRUGO, root, &zcache_eph_pageframes_max);
+	zdfs("pers_pageframes", S_IRUGO, root, &zcache_pers_pageframes);
+	zdfs("pers_pageframes_max", S_IRUGO, root, &zcache_pers_pageframes_max);
+	zdfs("eph_zpages", S_IRUGO, root, &zcache_eph_zpages);
+	zdfs("eph_zpages_max", S_IRUGO, root, &zcache_eph_zpages_max);
+	zdfs("pers_zpages", S_IRUGO, root, &zcache_pers_zpages);
+	zdfs("pers_zpages_max", S_IRUGO, root, &zcache_pers_zpages_max);
 	zdfs("last_active_file_pageframes", S_IRUGO, root,
-				(size_t *)&zcache_last_active_file_pageframes);
+				&zcache_last_active_file_pageframes);
 	zdfs("last_inactive_file_pageframes", S_IRUGO, root,
-				(size_t *)&zcache_last_inactive_file_pageframes);
+				&zcache_last_inactive_file_pageframes);
 	zdfs("last_active_anon_pageframes", S_IRUGO, root,
-				(size_t *)&zcache_last_active_anon_pageframes);
+				&zcache_last_active_anon_pageframes);
 	zdfs("last_inactive_anon_pageframes", S_IRUGO, root,
-				(size_t *)&zcache_last_inactive_anon_pageframes);
+				&zcache_last_inactive_anon_pageframes);
 	zdfs("eph_nonactive_puts_ignored", S_IRUGO, root,
-				(size_t *)&zcache_eph_nonactive_puts_ignored);
+				&zcache_eph_nonactive_puts_ignored);
 	zdfs("pers_nonactive_puts_ignored", S_IRUGO, root,
-				(size_t *)&zcache_pers_nonactive_puts_ignored);
-	zdfs64("eph_zbytes", S_IRUGO, root, (u64 *)&zcache_eph_zbytes);
-	zdfs64("eph_zbytes_max", S_IRUGO, root, (u64 *)&zcache_eph_zbytes_max);
-	zdfs64("pers_zbytes", S_IRUGO, root, (u64 *)&zcache_pers_zbytes);
-	zdfs64("pers_zbytes_max", S_IRUGO, root, (u64 *)&zcache_pers_zbytes_max);
+				&zcache_pers_nonactive_puts_ignored);
+	zdfs64("eph_zbytes", S_IRUGO, root, &zcache_eph_zbytes);
+	zdfs64("eph_zbytes_max", S_IRUGO, root, &zcache_eph_zbytes_max);
+	zdfs64("pers_zbytes", S_IRUGO, root, &zcache_pers_zbytes);
+	zdfs64("pers_zbytes_max", S_IRUGO, root, &zcache_pers_zbytes_max);
 	return 0;
 }
 #undef	zdebugfs
@@ -1611,8 +1611,8 @@ static void zcache_frontswap_init(unsigned ignored)
 }
 
 static struct frontswap_ops zcache_frontswap_ops = {
-	.put_page = zcache_frontswap_put_page,
-	.get_page = zcache_frontswap_get_page,
+	.store = zcache_frontswap_put_page,
+	.load = zcache_frontswap_get_page,
 	.invalidate_page = zcache_frontswap_flush_page,
 	.invalidate_area = zcache_frontswap_flush_area,
 	.init = zcache_frontswap_init
