@@ -635,16 +635,16 @@ int remove_mapping(struct address_space *mapping, struct page *page)
 void putback_lru_page(struct page *page)
 {
 	int lru;
-	int active = !!TestClearPageActive(page);
-	int was_unevictable = PageUnevictable(page);
+	int active;
+	int was_unevictable;
 
 	VM_BUG_ON(PageLRU(page));
-#ifdef CONFIG_CLEANCACHE
 	if (active)
 		SetPageWasActive(page);
-#endif
 
 redo:
+	active = !!TestClearPageActive(page);
+	was_unevictable = PageUnevictable(page);
 	ClearPageUnevictable(page);
 
 	if (page_evictable(page, NULL)) {
@@ -1297,9 +1297,7 @@ static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 	return nr_taken;
 }
 
-#ifdef CONFIG_CLEANCACHE
 			SetPageWasActive(page);
-#endif
 /**
  * isolate_lru_page - tries to isolate a page from its LRU list
  * @page: page to isolate from its LRU list
@@ -1772,9 +1770,7 @@ static void shrink_active_list(unsigned long nr_to_scan,
 		}
 
 		ClearPageActive(page);	/* we are de-activating */
-#ifdef CONFIG_CLEANCACHE
 		SetPageWasActive(page);
-#endif
 		list_add(&page->lru, &l_inactive);
 	}
 
