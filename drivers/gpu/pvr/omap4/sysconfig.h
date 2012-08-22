@@ -31,7 +31,11 @@
 
 #if defined(SGX540) && (SGX_CORE_REV == 120)
 #ifdef CONFIG_GPU_OVERCLOCK
+#ifdef CONFIG_GPU_ULTIMATE
 #define SYS_SGX_CLOCK_SPEED		512000000
+#else
+#define SYS_SGX_CLOCK_SPEED		384000000
+#endif
 #else
 #define SYS_SGX_CLOCK_SPEED		307200000
 #endif

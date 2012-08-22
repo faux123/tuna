@@ -399,7 +399,14 @@ config GPU_OVERCLOCK
 	bool "Enable GPU Overclocking on OMAP"
 	default n
 	help
-	  Enables CPU Overclocking on OMAP
+	  Enables GPU Overclocking on OMAP
+
+config GPU_ULTIMATE
+	bool "Enable GPU 512 MHz Overclocking on OMAP"
+	depends on GPU_OVERCLOCK
+	default n
+	help
+	  Enables GPU 512 MHz Overclocking on OMAP
 
 config VOLTAGE_CONTROL
 	bool "Enable MPU Votlage Control on OMAP"
