@@ -736,25 +736,29 @@ static void __init __reserve_region_with_split(struct resource *root,
 		return;
 
 	res->name = name;
-	res->start = start;
-	res->end = end;
 	res->flags = IORESOURCE_BUSY;
 
-	conflict = __request_resource(parent, res);
-	if (!conflict)
-		return;
+	while (1) {
+		res->start = start;
+		res->end = end;
 
-	/* failed, split and try again */
-	kfree(res);
+		conflict = __request_resource(parent, res);
+		if (!conflict)
+			break;
 
-	/* conflict covered whole area */
-	if (conflict->start <= start && conflict->end >= end)
-		return;
+		/* conflict covered whole area */
+		if (conflict->start <= start && conflict->end >= end) {
+			kfree(res);
+			break;
+		}
 
-	if (conflict->start > start)
-		__reserve_region_with_split(root, start, conflict->start-1, name);
-	if (conflict->end < end)
-		__reserve_region_with_split(root, conflict->end+1, end, name);
+		/* failed, split and try again */
+		if (conflict->start > start)
+			end = conflict->start - 1;
+		if (conflict->end < end)
+			start = conflict->end + 1;
+	}
+
 }
 
 void __init reserve_region_with_split(struct resource *root,
