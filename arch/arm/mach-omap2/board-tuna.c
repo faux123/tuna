@@ -535,8 +535,8 @@ static struct regulator_consumer_supply tuna_vaux3_supplies[] = {
 
 static struct regulator_init_data tuna_vaux3 = {
 	.constraints = {
-		.min_uV			= 3100000,
-		.max_uV			= 3100000,
+		.min_uV			= 2900000,
+		.max_uV			= 2900000,
 		.apply_uV		= true,
 		.valid_modes_mask	= REGULATOR_MODE_NORMAL
 					| REGULATOR_MODE_STANDBY,
@@ -1391,7 +1391,7 @@ static void __init tuna_init(void)
 
 
 #ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_2_PHASE
-	set_two_phase_freq(920000);
+	set_two_phase_freq(1060000);
 #endif
 
 	tuna_wlan_init();
