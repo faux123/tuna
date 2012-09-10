@@ -284,11 +284,64 @@ static int omap_target(struct cpufreq_policy *policy,
 	return ret;
 }
 
+#define MAX_GOV_NAME_LEN 16
+static char cpufreq_default_gov[CONFIG_NR_CPUS][MAX_GOV_NAME_LEN];
+static char *cpufreq_conservative_gov = "conservative";
+
+static void cpufreq_store_default_gov(void)
+{
+	unsigned int cpu;
+	struct cpufreq_policy *policy;
+
+	for (cpu = 0; cpu < CONFIG_NR_CPUS; cpu++) {
+		policy = cpufreq_cpu_get(cpu);
+		if (policy) {
+			sprintf(cpufreq_default_gov[cpu], "%s",
+				policy->governor->name);
+			cpufreq_cpu_put(policy);
+		}
+	}
+}
+
+static int cpufreq_change_gov(char *target_gov)
+{
+	unsigned int cpu = 0;
+	for_each_online_cpu(cpu)
+		return cpufreq_set_gov(target_gov, cpu);
+}
+
+static int cpufreq_restore_default_gov(void)
+{
+	int ret = 0;
+	unsigned int cpu;
+
+	for (cpu = 0; cpu < CONFIG_NR_CPUS; cpu++) {
+		if (strlen((const char *)&cpufreq_default_gov[cpu])) {
+			ret = cpufreq_set_gov(cpufreq_default_gov[cpu], cpu);
+			if (ret < 0)
+				/* Unable to restore gov for the cpu as
+				 * It was online on suspend and becomes
+				 * offline on resume.
+				 */
+				pr_info("Unable to restore gov:%s for cpu:%d,"
+						, cpufreq_default_gov[cpu]
+							, cpu);
+		}
+		cpufreq_default_gov[cpu][0] = '\0';
+	}
+	return ret;
+}
+
 static void omap_cpu_early_suspend(struct early_suspend *h)
 {
 	unsigned int cur;
 
 	mutex_lock(&omap_cpufreq_lock);
+
+	cpufreq_store_default_gov();
+	if (cpufreq_change_gov(cpufreq_conservative_gov))
+		pr_err("Early_suspend: Error changing governor to %s\n",
+			cpufreq_conservative_gov);
 
 	if (screen_off_max_freq) {
 		max_capped = screen_off_max_freq;
@@ -306,6 +359,8 @@ static void omap_cpu_late_resume(struct early_suspend *h)
 	unsigned int cur;
 
 	mutex_lock(&omap_cpufreq_lock);
+	if (cpufreq_restore_default_gov())
+		pr_err("Early_suspend: Unable to restore governor\n");
 
 	if (max_capped) {
 		max_capped = 0;
