@@ -408,6 +408,13 @@ config GPU_ULTIMATE
 	help
 	  Enables GPU 512 MHz Overclocking on OMAP
 
+config CONSERVATIVE_GOV_WHILE_SCREEN_OFF
+	bool "Switch to Conservative governor while screen off"
+	default n
+	help
+	  Switch to Conservative CPU governor while screen off to save
+	  power
+
 config VOLTAGE_CONTROL
 	bool "Enable MPU Votlage Control on OMAP"
 	depends on !OMAP_SMARTREFLEX_CLASS1P5
