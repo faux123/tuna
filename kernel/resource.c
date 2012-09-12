@@ -731,7 +731,6 @@ static void __init __reserve_region_with_split(struct resource *root,
 	struct resource *parent = root;
 	struct resource *conflict;
 	struct resource *res = kzalloc(sizeof(*res), GFP_ATOMIC);
-	struct resource *next_res = NULL;
 
 	if (!res)
 		return;
@@ -741,43 +740,21 @@ static void __init __reserve_region_with_split(struct resource *root,
 	res->end = end;
 	res->flags = IORESOURCE_BUSY;
 
-	while (1) {
+	conflict = __request_resource(parent, res);
+	if (!conflict)
+		return;
 
-		conflict = __request_resource(parent, res);
-		if (!conflict) {
-			if (!next_res)
-				break;
-			res = next_res;
-			next_res = NULL;
-			continue;
-		}
+	/* failed, split and try again */
+	kfree(res);
 
-		/* conflict covered whole area */
-		if (conflict->start <= res->start &&
-				conflict->end >= res->end) {
-			kfree(res);
-			WARN_ON(next_res);
-			break;
-		}
+	/* conflict covered whole area */
+	if (conflict->start <= start && conflict->end >= end)
+		return;
 
-		/* failed, split and try again */
-		if (conflict->start > res->start) {
-			end = res->end;
-			res->end = conflict->start - 1;
-			if (conflict->end < end) {
-				next_res = kzalloc(sizeof(*res), GFP_ATOMIC);
-				if (!next_res) {
-					kfree(res);
-					break;
-				}
-				next_res->start = conflict->end + 1;
-				next_res->end = end;
-			}
-		} else {
-			res->start = conflict->end + 1;
-		}
-	}
-
+	if (conflict->start > start)
+		__reserve_region_with_split(root, start, conflict->start-1, name);
+	if (conflict->end < end)
+		__reserve_region_with_split(root, conflict->end+1, end, name);
 }
 
 void __init reserve_region_with_split(struct resource *root,
