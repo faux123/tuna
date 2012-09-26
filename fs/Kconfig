@@ -275,10 +275,3 @@ source "fs/nls/Kconfig"
 source "fs/dlm/Kconfig"
 
 endmenu
-
-config DYNAMIC_SYNC_CONTROL
-	bool "Dynamic file sync control based on screen on/off"
-	default n 
-	---help---
-	  An experimental file sync control based on Android's unique
-	  early suspend / late resume drivers

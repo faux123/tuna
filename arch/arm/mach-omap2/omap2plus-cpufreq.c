@@ -62,8 +62,6 @@ static DEFINE_PER_CPU(struct lpj_info, lpj_ref);
 static struct lpj_info global_lpj_ref;
 #endif
 
-bool early_suspend_active = false;
-
 static struct cpufreq_frequency_table *freq_table;
 static atomic_t freq_table_users = ATOMIC_INIT(0);
 static struct clk *mpu_clk;
@@ -341,7 +339,6 @@ static void omap_cpu_early_suspend(struct early_suspend *h)
 	unsigned int cur;
 
 	mutex_lock(&omap_cpufreq_lock);
-	early_suspend_active = true;
 #ifdef CONFIG_CONSERVATIVE_GOV_WHILE_SCREEN_OFF
 	cpufreq_store_default_gov();
 	if (cpufreq_change_gov(cpufreq_conservative_gov))
@@ -375,7 +372,7 @@ static void omap_cpu_late_resume(struct early_suspend *h)
 		if (cur != current_target_freq)
 			omap_cpufreq_scale(current_target_freq, cur);
 	}
-	early_suspend_active = false;
+
 	mutex_unlock(&omap_cpufreq_lock);
 }
 
