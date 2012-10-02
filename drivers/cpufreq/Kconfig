@@ -231,6 +231,13 @@ config CPUFREQ_LIMIT_MAX_FREQ
 	help
 		Limit Max Freq while screen is on for Intellidemand governor
 
+config CPUFREQ_ID_PERFLOCK
+	bool "Intellidemand Performance Lock"
+	depends on CPU_FREQ_GOV_INTELLIDEMAND
+	default	y
+	help
+		Minimum CPU performance lock for Intellidemand governor
+
 config CPU_FREQ_GOV_INTERACTIVE
 	tristate "'interactive' cpufreq policy governor"
 	help
