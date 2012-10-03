@@ -4744,9 +4744,19 @@ void __wake_up(wait_queue_head_t *q, unsigned int mode,
 {
 	unsigned long flags;
 
-	spin_lock_irqsave(&q->lock, flags);
-	__wake_up_common(q, mode, nr_exclusive, 0, key);
-	spin_unlock_irqrestore(&q->lock, flags);
+	/*
+	 * We can check for list emptiness outside the lock by using the
+	 * "careful" check that verifies both the next and prev pointers, so
+	 * that there cannot be any half-pending updates in progress.
+	 *
+	 * This prevents the wake up to enter the critical section needlessly
+	 * when the task list is empty.
+	 */
+	if (!list_empty_careful(&q->task_list)) {
+		spin_lock_irqsave(&q->lock, flags);
+		__wake_up_common(q, mode, nr_exclusive, 0, key);
+		spin_unlock_irqrestore(&q->lock, flags);
+	}
 }
 EXPORT_SYMBOL(__wake_up);
 
