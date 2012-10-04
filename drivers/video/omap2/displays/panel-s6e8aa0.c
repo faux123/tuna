@@ -66,6 +66,12 @@ enum {
 #define DRIVER_NAME "s6e8aa0_i2c"
 #define DEVICE_NAME "s6e8aa0_i2c"
 
+#ifdef CONFIG_CONTRAST_HACK
+static int contrast = 0;
+module_param(contrast, int, 0664);
+EXPORT_SYMBOL(contrast);
+#endif
+
 #ifdef CONFIG_COLOR_HACK
 #include <linux/miscdevice.h>
 #define samoled_COLOR_VERSION 3
@@ -761,6 +767,9 @@ static void s6e8aa0_setup_gamma_regs(struct s6e8aa0_data *s6, u8 gamma_regs[],
 
 		v[V1] = s6e8aa0_gamma_lookup(s6, brightness, bv->v1, c);
 		offset = s6->gamma_reg_offsets.v[1][c][V1];
+#ifdef CONFIG_CONTRAST_HACK
+		offset -= min(max(contrast, -32), 24);
+#endif
 		adj_max = min(V1_ADJ_MAX, V1_ADJ_MAX - offset);
 		adj_min = max(0, 0 - offset);
 		adj = v1_to_v1adj(v[V1], v0) - offset;

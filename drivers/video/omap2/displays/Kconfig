@@ -62,4 +62,12 @@ config COLOR_HACK
     default y
     ---help---
         This enables support samoled color hack based on Supercurio work. Fully extracted work from Crespo CM kernel.
+
+config CONTRAST_HACK
+	bool "Contrast Hack"
+	depends on PANEL_S6E8AA0
+	default y
+	help
+	  Contrast hack for Samsung AMOLED
+
 endmenu
