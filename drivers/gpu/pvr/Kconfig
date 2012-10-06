@@ -140,3 +140,10 @@ config PVR_LINUX_MEM_AREA_POOL_MAX_PAGES
 		Pool size in pages.
 		A size of 0 disables the pool.
 		A size of -1 allows the pool to grow indefinitely.
+
+config PVR_GOVERNOR
+	bool "Enable simple PVR GPU governor"
+	depends on PVR_SGX
+	default n
+	help
+	  A simple PVR GPU governor by faux123
