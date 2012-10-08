@@ -7449,6 +7449,11 @@ static void init_sched_groups_power(int cpu, struct sched_domain *sd)
 	update_group_power(sd, cpu);
 }
 
+int __weak arch_sd_share_power_line(void)
+{
+	return 1*SD_SHARE_POWERLINE;
+}
+
 /*
  * Initializers for schedule domains
  * Non-inlined to reduce accumulated stack pressure in build_sched_domains()
