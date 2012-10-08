@@ -4881,6 +4881,23 @@ static int find_new_ilb(int cpu)
 	struct sched_domain *sd;
 	struct sched_group *ilb_group;
 	int ilb = nr_cpu_ids;
+	int buddy = per_cpu(sd_pack_buddy, cpu);
+
+	/*
+	 * If we have a pack buddy CPU, we try to run load balance on a CPU
+	 * that is close to the buddy.
+	 */
+	if (buddy != -1)
+		for_each_domain(buddy, sd) {
+			if (sd->flags & SD_SHARE_CPUPOWER)
+				continue;
+
+			ilb = cpumask_first_and(sched_domain_span(sd),
+					nohz.idle_cpus_mask);
+
+			if (ilb < nr_cpu_ids)
+				break;
+		}
 
 	/*
 	 * Have idle load balancer selection from semi-idle packages only
