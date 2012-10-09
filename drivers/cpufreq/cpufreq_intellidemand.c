@@ -1188,7 +1188,7 @@ unsigned long get_lmf_inactive_load(void)
 #define NR_FSHIFT	1
 static unsigned int nr_run_thresholds[] = {
 /* 	1,  2 - on-line cpus target */
-	5,  UINT_MAX /* avg run threads * 2 (e.g., 9 = 2.25 threads) */
+	4,  UINT_MAX /* avg run threads * 2 (e.g., 9 = 2.25 threads) */
 	};
 
 static unsigned int nr_run_hysteresis = 2;  /* 0.5 thread */
