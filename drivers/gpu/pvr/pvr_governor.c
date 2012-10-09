@@ -22,6 +22,7 @@
 
 #include "pvr_governor.h"
 
+static uint sgxGovType = 1;	/* 1 - "ondemand", 0 - "performance" */
 static uint sgxBusyCount = 0;
 static long unsigned sgxGovernorStats[SGX_SPEED_STEPS] =
 	{0, 0, 0};
@@ -30,34 +31,65 @@ uint PVRSimpleGovernor(bool enabled)
 {
 	uint index;
 
-	/* don't count if too busy */
-	if (sgxBusyCount < 20)
-		sgxBusyCount++;
+	if (sgxGovType) {
+		/* don't count if too busy */
+		if (sgxBusyCount < 20)
+			sgxBusyCount++;
 
-	// faux123 debug
-	//pr_info("PVR Busy Count: %u\n", sgxBusyCount);
+		// faux123 debug
+		//pr_info("PVR Busy Count: %u\n", sgxBusyCount);
 
-	/* if requested to turn off the clock */
-	if (!enabled) {
-		index = SGX_SPEED_IDLE;
-		/* reset busy count */
-		sgxBusyCount = 0;
-		sgxGovernorStats[SGX_SPEED_IDLE]++;
-	} else {
-		if (sgxBusyCount <= SGX_SPEED_THRESHOLD) {
-			index = SGX_SPEED_TURBO;
-			//pr_info("PVR Turbo Activated!\n");
-			sgxGovernorStats[SGX_SPEED_TURBO]++;
-		}
-		else {
-			index = SGX_SPEED_NOMINAL;
-			sgxGovernorStats[SGX_SPEED_NOMINAL]++;
+		/* if requested to turn off the clock */
+		if (!enabled) {
+			index = SGX_SPEED_IDLE;
+			/* reset busy count */
+			sgxBusyCount = 0;
+			sgxGovernorStats[SGX_SPEED_IDLE]++;
+		} else {
+			if (sgxBusyCount <= SGX_SPEED_THRESHOLD) {
+				index = SGX_SPEED_TURBO;
+				//pr_info("PVR Turbo Activated!\n");
+				sgxGovernorStats[SGX_SPEED_TURBO]++;
+			}
+			else {
+				index = SGX_SPEED_NOMINAL;
+				sgxGovernorStats[SGX_SPEED_NOMINAL]++;
+			}
 		}
 	}
+	else
+		index = SGX_SPEED_TURBO;
+
 	return index;
 }
 
 /* **************************** SYSFS interface **************************** */
+static ssize_t pvr_simple_governor_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%s\n", (sgxGovType ? "ondemand" : "performance"));
+}
+
+static ssize_t pvr_simple_governor_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+	unsigned int data;
+
+	if(sscanf(buf, "%u\n", &data) == 1) {
+		if (data == 1) {
+			pr_info("%s: Switched to PVR Ondemand\n", __FUNCTION__);
+			sgxGovType = 1;
+		}
+		else if (data == 0) {
+			pr_info("%s: Switched to PVR Performance\n", __FUNCTION__);
+			sgxGovType = 0;
+		}
+		else
+			pr_info("%s: bad value: %u\n", __FUNCTION__, data);
+	} else
+		pr_info("%s: unknown input!\n", __FUNCTION__);
+
+	return count;
+}
+
 static ssize_t pvr_simple_gov_stats_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
 	char *out = buf;
@@ -74,6 +106,9 @@ static ssize_t pvr_simple_gov_version_show(struct kobject *kobj, struct kobj_att
 	return sprintf(buf, "version: %u\n", PVR_GOVERNOR_VERSION);
 }
 
+static struct kobj_attribute pvr_simple_governor_attribute =
+	__ATTR(simple_governor, 0666, pvr_simple_governor_show, pvr_simple_governor_store);
+
 static struct kobj_attribute pvr_simple_gov_stats_attribute =
 	__ATTR(simple_gov_stats, 0444 , pvr_simple_gov_stats_show, NULL);
 
@@ -82,6 +117,7 @@ static struct kobj_attribute pvr_simple_gov_version_attribute =
 
 static struct attribute *pvr_simple_gov_attrs[] =
 	{
+		&pvr_simple_governor_attribute.attr,
 		&pvr_simple_gov_stats_attribute.attr,
 		&pvr_simple_gov_version_attribute.attr,
 		NULL,
