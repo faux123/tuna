@@ -819,17 +819,6 @@ static struct android_usb_function audio_source_function = {
 	.attributes	= audio_source_function_attributes,
 };
 
-static int dm_function_bind_config(struct android_usb_function *f,
-					struct usb_configuration *c)
-{
-	return dm_bind_config(c, DM_PORT_NUM);
-}
-
-static struct android_usb_function dm_function = {
-	.name           = "dm",
-	.bind_config    = dm_function_bind_config,
-};
-
 static struct android_usb_function *supported_functions[] = {
 	&adb_function,
 	&acm_function,
