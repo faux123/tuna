@@ -22,7 +22,7 @@
 
 #include "pvr_governor.h"
 
-static uint sgxGovType = 1;	/* 1 - "ondemand", 0 - "performance" */
+static uint sgxGovType = 1;	/* 2 - "powersave", 1 - "ondemand", 0 - "performance" */
 static uint sgxBusyCount = 0;
 static long unsigned sgxGovernorStats[SGX_SPEED_STEPS] =
 	{0, 0, 0};
@@ -31,21 +31,26 @@ uint PVRSimpleGovernor(bool enabled)
 {
 	uint index;
 
-	if (sgxGovType) {
-		/* don't count if too busy */
-		if (sgxBusyCount < 20)
-			sgxBusyCount++;
+	/* if requested to turn off the clock */
+	if (!enabled) {
+		index = SGX_SPEED_IDLE;
 
-		// faux123 debug
-		//pr_info("PVR Busy Count: %u\n", sgxBusyCount);
+		/* reset busy count */
+		sgxBusyCount = 0;
+		sgxGovernorStats[SGX_SPEED_IDLE]++;
 
-		/* if requested to turn off the clock */
-		if (!enabled) {
-			index = SGX_SPEED_IDLE;
-			/* reset busy count */
-			sgxBusyCount = 0;
-			sgxGovernorStats[SGX_SPEED_IDLE]++;
-		} else {
+		return index;
+	}
+
+	switch (sgxGovType) {
+		case 1:
+			/* don't count if too busy */
+			if (sgxBusyCount < 20)
+				sgxBusyCount++;
+
+			// faux123 debug
+			//pr_info("PVR Busy Count: %u\n", sgxBusyCount);
+
 			if (sgxBusyCount <= SGX_SPEED_THRESHOLD) {
 				index = SGX_SPEED_TURBO;
 				//pr_info("PVR Turbo Activated!\n");
@@ -55,10 +60,17 @@ uint PVRSimpleGovernor(bool enabled)
 				index = SGX_SPEED_NOMINAL;
 				sgxGovernorStats[SGX_SPEED_NOMINAL]++;
 			}
-		}
+			break;
+		case 2:
+			index = SGX_SPEED_NOMINAL;
+			sgxGovernorStats[SGX_SPEED_NOMINAL]++;
+			break;
+		case 0:
+		default:
+			index = SGX_SPEED_TURBO;
+			sgxGovernorStats[SGX_SPEED_TURBO]++;
+			break;
 	}
-	else
-		index = SGX_SPEED_TURBO;
 
 	return index;
 }
@@ -81,6 +93,10 @@ static ssize_t pvr_simple_governor_store(struct kobject *kobj, struct kobj_attri
 		else if (data == 0) {
 			pr_info("%s: Switched to PVR Performance\n", __FUNCTION__);
 			sgxGovType = 0;
+		}
+		else if (data == 2) {
+			pr_info("%s: Switched to PVR PowerSave\n", __FUNCTION__);
+			sgxGovType = 2;
 		}
 		else
 			pr_info("%s: bad value: %u\n", __FUNCTION__, data);
