@@ -78,7 +78,24 @@ uint PVRSimpleGovernor(bool enabled)
 /* **************************** SYSFS interface **************************** */
 static ssize_t pvr_simple_governor_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%s\n", (sgxGovType ? "ondemand" : "performance"));
+	char * gov_name = "";
+
+	switch (sgxGovType) {
+	case 0:
+		gov_name = "performance";
+		break;
+	case 1:
+		gov_name = "ondemand";
+		break;
+	case 2:
+		gov_name = "powersave";
+		break;
+	default:
+		gov_name = "unknown";
+		break;
+	}
+
+	return sprintf(buf, "%s\n", gov_name);
 }
 
 static ssize_t pvr_simple_governor_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
