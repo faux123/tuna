@@ -24,8 +24,15 @@
 
 static uint sgxGovType = 1;	/* 2 - "powersave", 1 - "ondemand", 0 - "performance" */
 static uint sgxBusyCount = 0;
+static uint sgxCurrFrequency = 0;
+
 static long unsigned sgxGovernorStats[SGX_SPEED_STEPS] =
 	{0, 0, 0};
+
+void PVRSimpleGovFreqUpdate(uint newFreq)
+{
+	sgxCurrFrequency = newFreq;
+}
 
 uint PVRSimpleGovernor(bool enabled)
 {
@@ -139,6 +146,11 @@ static ssize_t pvr_simple_gov_version_show(struct kobject *kobj, struct kobj_att
 	return sprintf(buf, "version: %u\n", PVR_GOVERNOR_VERSION);
 }
 
+static ssize_t pvr_simple_gov_freq_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%u\n", sgxCurrFrequency);
+}
+
 static struct kobj_attribute pvr_simple_governor_attribute =
 	__ATTR(simple_governor, 0666, pvr_simple_governor_show, pvr_simple_governor_store);
 
@@ -148,11 +160,15 @@ static struct kobj_attribute pvr_simple_gov_stats_attribute =
 static struct kobj_attribute pvr_simple_gov_version_attribute =
 	__ATTR(simple_gov_version, 0444 , pvr_simple_gov_version_show, NULL);
 
+static struct kobj_attribute pvr_simple_gov_freq_attribute =
+	__ATTR(simple_gov_currfreq, 0444 , pvr_simple_gov_freq_show, NULL);
+
 static struct attribute *pvr_simple_gov_attrs[] =
 	{
 		&pvr_simple_governor_attribute.attr,
 		&pvr_simple_gov_stats_attribute.attr,
 		&pvr_simple_gov_version_attribute.attr,
+		&pvr_simple_gov_freq_attribute.attr,
 		NULL,
 	};
 
