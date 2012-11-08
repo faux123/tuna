@@ -48,7 +48,6 @@ static struct vibrator {
 static ssize_t pwmvalue_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-
 	int count;
 
 	count = sprintf(buf, "%lu\n", pwmval);
@@ -61,7 +60,6 @@ ssize_t pwmvalue_store(struct device *dev,
 		struct device_attribute *attr,
 		const char *buf, size_t size)
 {
-
 	if (kstrtoul(buf, 0, &pwmval))
 		pr_err("vibrator: error in storing pwm value\n");
 
@@ -69,46 +67,12 @@ ssize_t pwmvalue_store(struct device *dev,
 
 	return size;
 }
+
 static DEVICE_ATTR(pwmvalue, S_IRUGO | S_IWUGO,
 		pwmvalue_show, pwmvalue_store);
 
-static int pwm_set(unsigned long force)
-{
-	int pwm_duty;
-
-	pr_info("vibrator: pwm_set force=%lu\n", force);
-
-	if (unlikely(vibdata.gptimer == NULL))
-		return -EINVAL;
-
-	/*
-	 * Formula for matching the user space force (-127 to +127)
-	 * to Duty cycle.
-	 * Duty cycle will vary from 0 to 45('0' means 0% duty cycle,
-	 * '45' means 100% duty cycle.
-	 * Also if user space force equals to -127 then duty
-	 * cycle will be 0 (0%), if force equals to 0 duty cycle
-	 * will be 22.5(50%), if +127 then duty cycle will
-	 * be 45(100%)
-	 */
-
-	pwm_duty = ((force + 128)
-			* (PWM_DUTY_MAX >> 1)/128);
-
-	omap_dm_timer_set_load(vibdata.gptimer, 1, -PWM_DUTY_MAX);
-	omap_dm_timer_set_match(vibdata.gptimer, 1, -pwm_duty);
-	omap_dm_timer_set_pwm(vibdata.gptimer, 0, 1,
-			OMAP_TIMER_TRIGGER_OVERFLOW_AND_COMPARE);
-	omap_dm_timer_enable(vibdata.gptimer);
-	omap_dm_timer_write_counter(vibdata.gptimer, -2);
-	omap_dm_timer_save_context(vibdata.gptimer);
-
-	return 0;
-}
-
 static int tuna_create_vibrator_sysfs(void)
 {
-
 	int ret;
 	struct kobject *vibrator_kobj;
 	vibrator_kobj = kobject_create_and_add("vibrator", NULL);
@@ -123,7 +87,6 @@ static int tuna_create_vibrator_sysfs(void)
 	}
 
 	return 0;
-
 }
 
 static void vibrator_off(void)
@@ -149,6 +112,20 @@ static int vibrator_get_time(struct timed_output_dev *dev)
 static int vibrator_timer_init(void)
 {
 	int ret;
+	int pwm_duty;
+
+	/*
+	 * Formula for matching the user space force (-127 to +127)
+	 * to Duty cycle.
+	 * Duty cycle will vary from 0 to 45('0' means 0% duty cycle,
+	 * '45' means 100% duty cycle.
+	 * Also if user space force equals to -127 then duty
+	 * cycle will be 0 (0%), if force equals to 0 duty cycle
+	 * will be 22.5(50%), if +127 then duty cycle will
+	 * be 45(100%)
+	 */
+
+	pwm_duty = ((pwmval + 128) * (PWM_DUTY_MAX >> 1)/128);
 
 	ret = omap_dm_timer_set_source(vibdata.gptimer,
 		OMAP_TIMER_SRC_SYS_CLK);
@@ -156,7 +133,7 @@ static int vibrator_timer_init(void)
 		return ret;
 
 	omap_dm_timer_set_load(vibdata.gptimer, 1, -PWM_DUTY_MAX);
-	omap_dm_timer_set_match(vibdata.gptimer, 1, -PWM_DUTY_MAX+10);
+	omap_dm_timer_set_match(vibdata.gptimer, 1, -pwm_duty);
 	omap_dm_timer_set_pwm(vibdata.gptimer, 0, 1,
 		OMAP_TIMER_TRIGGER_OVERFLOW_AND_COMPARE);
 	omap_dm_timer_enable(vibdata.gptimer);
@@ -170,15 +147,15 @@ static void vibrator_enable(struct timed_output_dev *dev, int value)
 	mutex_lock(&vibdata.lock);
 
 	/* make sure pwmval is between 0 and 127 */
-	if(pwmval > 127) {
+	if( pwmval > 127 ) {
 	    pwmval = 127;
-	} else if (pwmval < 0) {
+	} else if ( pwmval < 0 ) {
 	    pwmval = 0;
 	}
 
 	/* set the current pwmval */
 	if (pwmval != oldpwmval) {
-	    pwm_set(pwmval);
+	    vibrator_timer_init();
 	    oldpwmval = pwmval;
 	}
 
@@ -225,7 +202,6 @@ static int __init vibrator_init(void)
 {
 	int ret;
 
-	pr_info("vibrator_init()\n");
 	vibdata.enabled = false;
 
 	hrtimer_init(&vibdata.timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
@@ -247,10 +223,8 @@ static int __init vibrator_init(void)
 	tuna_create_vibrator_sysfs();
 
 	ret = timed_output_dev_register(&to_dev);
-	if (ret < 0) {
-		pr_err("vibrator_init(): failed to register timed_output device\n");
+	if (ret < 0)
 		goto err_to_dev_reg;
-	}
 
 	return 0;
 
@@ -269,25 +243,25 @@ static int __init omap4_tuna_vibrator_init(void)
 {
 	int ret;
 
-	pr_info("omap4_tuna_vibrator_init()\n");
+	if (!machine_is_tuna())
+		return 0;
+
 	vibdata.gpio_en = (omap4_tuna_get_revision() >= 5) ?
-                      GPIO_MOTOR_EN_REV05 : GPIO_MOTOR_EN;
+			GPIO_MOTOR_EN_REV05 : GPIO_MOTOR_EN;
 
 	omap_mux_init_gpio(vibdata.gpio_en, OMAP_PIN_OUTPUT |
 						OMAP_PIN_OFF_OUTPUT_LOW);
 	omap_mux_init_signal("dpm_emu18.dmtimer10_pwm_evt", OMAP_PIN_OUTPUT);
 
-	ret = gpio_request(vibdata.gpio_en, "MOTOR_EN");
+	ret = gpio_request(vibdata.gpio_en, "vibrator-en");
 	if (ret)
 		return ret;
 
 	gpio_direction_output(vibdata.gpio_en, 0);
 
 	ret = vibrator_init();
-	if (ret < 0) {
-		pr_err("omap4_tuna_vibrator_init(): vibrator_init() failed\n");
+	if (ret < 0)
 		gpio_free(vibdata.gpio_en);
-	}
 
 	return ret;
 }
