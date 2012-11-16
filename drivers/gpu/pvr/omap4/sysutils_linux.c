@@ -170,6 +170,10 @@ void RequestSGXFreq(SYS_DATA *psSysData, IMG_BOOL bMaxFreq)
 		res = pdata->device_scale(&gpsPVRLDMDev->dev,
 					  &gpsPVRLDMDev->dev,
 					  psSysSpecData->pui32SGXFreqList[freq_index]);
+
+		// faux123: store freq value for sysfs read
+		PVRSimpleGovFreqUpdate(psSysSpecData->pui32SGXFreqList[freq_index]);
+
 		// faux123 debug
 		//pr_info(" PVR freq: %u\n", psSysSpecData->pui32SGXFreqList[freq_index]);
 
