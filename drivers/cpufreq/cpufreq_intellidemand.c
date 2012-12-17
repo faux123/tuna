@@ -1191,7 +1191,7 @@ static unsigned int nr_run_thresholds[] = {
 	7,  UINT_MAX /* avg run threads * 2 (e.g., 9 = 2.25 threads) */
 	};
 
-static unsigned int nr_run_hysteresis = 2;  /* 0.5 thread */
+static unsigned int nr_run_hysteresis = 8;  /* 0.5 thread */
 static unsigned int nr_run_last;
 
 static unsigned int calculate_thread_stats (void)
