@@ -24,6 +24,7 @@
 #define HWCAP_IDIVA	(1 << 17)
 #define HWCAP_IDIVT	(1 << 18)
 #define HWCAP_IDIV	(HWCAP_IDIVA | HWCAP_IDIVT)
+#define HWCAP_VFPD32	(1 << 19)	/* set if VFP has 32 regs (not 16) */
 
 #if defined(__KERNEL__) && !defined(__ASSEMBLY__)
 /*
