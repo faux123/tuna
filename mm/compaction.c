@@ -109,6 +109,16 @@ static unsigned long isolate_freepages_block(unsigned long blockpfn,
 	return total_isolated;
 }
 
+static void map_pages(struct list_head *list)
+{
+	struct page *page;
+
+	list_for_each_entry(page, list, lru) {
+		arch_alloc_page(page, 0);
+		kernel_map_pages(page, 1, 1);
+	}
+}
+
 /**
  * isolate_freepages_range() - isolate free pages.
  * @start_pfn: The first PFN to start isolating.
@@ -196,16 +206,6 @@ static bool suitable_migration_target(struct page *page)
 
 	/* Otherwise skip the block */
 	return false;
-}
-
-static void map_pages(struct list_head *list)
-{
-	struct page *page;
-
-	list_for_each_entry(page, list, lru) {
-		arch_alloc_page(page, 0);
-		kernel_map_pages(page, 1, 1);
-	}
 }
 
 /*
