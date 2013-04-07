@@ -47,9 +47,15 @@
 #ifdef CONFIG_VOLTAGE_CONTROL
 #include "smartreflex.h"
 
+#ifdef CONFIG_PRE_UNDERVOLT
 #define MIN_OMAP4460_VDD_CORE_OPP50_UV		 875000
 #define MIN_OMAP4460_VDD_CORE_OPP100_UV		1000000
 #define MIN_OMAP4460_VDD_CORE_OPP100_OV_UV	1100000
+#else
+#define MIN_OMAP4460_VDD_CORE_OPP50_UV		 962000
+#define MIN_OMAP4460_VDD_CORE_OPP100_UV		1127000
+#define MIN_OMAP4460_VDD_CORE_OPP100_OV_UV	1250000
+#endif
 #endif
 
 #ifdef CONFIG_SMP
@@ -756,6 +762,9 @@ static ssize_t store_uv_mv_table(struct cpufreq_policy *policy,
 						opp_cur->u_volt = MIN_OMAP4460_VDD_CORE_OPP100_OV_UV;
 					break;
 				default:
+					pr_err("core dependent volt => %u\n",
+					mpu_voltdm->vdd->dep_vdd_info->
+					  dep_table[i].dep_vdd_volt);
 					pr_err("bad voltage value %lu\n", opp_cur->u_volt);
 					goto bad_uv_err;
 			}
