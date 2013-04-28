@@ -1,7 +1,8 @@
+
 /*
  * ROW (Read Over Write) I/O scheduler.
  *
- * Copyright (c) 2012, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -58,6 +59,17 @@ static const bool queue_idling_enabled[] = {
 	false,	/* ROWQ_PRIO_LOW_SWRITE */
 };
 
+/* Flags indicating whether the queue can notify on urgent requests */
+static const bool urgent_queues[] = {
+	true,	/* ROWQ_PRIO_HIGH_READ */
+	true,	/* ROWQ_PRIO_REG_READ */
+	false,	/* ROWQ_PRIO_HIGH_SWRITE */
+	false,	/* ROWQ_PRIO_REG_SWRITE */
+	false,	/* ROWQ_PRIO_REG_WRITE */
+	false,	/* ROWQ_PRIO_LOW_READ */
+	false,	/* ROWQ_PRIO_LOW_SWRITE */
+};
+
 /* Default values for row queues quantums in each dispatch cycle */
 static const int queue_quantum[] = {
 	100,	/* ROWQ_PRIO_HIGH_READ */
@@ -69,9 +81,9 @@ static const int queue_quantum[] = {
 	1	/* ROWQ_PRIO_LOW_SWRITE */
 };
 
-/* Default values for idling on read queues */
-#define ROW_IDLE_TIME_MSEC 5	/* msec */
-#define ROW_READ_FREQ_MSEC 20	/* msec */
+/* Default values for idling on read queues (in msec) */
+#define ROW_IDLE_TIME_MSEC 5
+#define ROW_READ_FREQ_MSEC 20
 
 /**
  * struct rowq_idling_data -  parameters for idling on the queue
@@ -93,6 +105,7 @@ struct rowq_idling_data {
  * @nr_dispatched:	number of requests already dispatched in
  *			the current dispatch cycle
  * @slice:		number of requests to dispatch in a cycle
+ * @nr_req:		number of requests in queue
  * @idle_data:		data for idling on queues
  *
  */
@@ -103,6 +116,8 @@ struct row_queue {
 
 	unsigned int		nr_dispatched;
 	unsigned int		slice;
+
+	unsigned int		nr_req;
 
 	/* used only for READ queues */
 	struct rowq_idling_data	idle_data;
@@ -180,6 +195,19 @@ static inline int row_rowq_unserved(struct row_data *rd,
 	return rd->cycle_flags & (1 << qnum);
 }
 
+static inline void __maybe_unused row_dump_queues_stat(struct row_data *rd)
+{
+	int i;
+
+	row_log(rd->dispatch_queue, " Queues status (curr_queue=%d):",
+			rd->curr_queue);
+	for (i = 0; i < ROWQ_MAX_PRIO; i++)
+		row_log(rd->dispatch_queue,
+			"queue%d: dispatched= %d, nr_req=%d", i,
+			rd->row_queues[i].nr_dispatched,
+			rd->row_queues[i].nr_req);
+}
+
 /******************** Static helper functions ***********************/
 /*
  * kick_queue() - Wake up device driver queue thread
@@ -253,6 +281,7 @@ static void row_add_request(struct request_queue *q,
 
 	list_add_tail(&rq->queuelist, &rqueue->fifo);
 	rd->nr_reqs[rq_data_dir(rq)]++;
+	rqueue->nr_req++;
 	rq_set_fifo_time(rq, jiffies); /* for statistics*/
 
 	if (queue_idling_enabled[rqueue->prio]) {
@@ -271,10 +300,73 @@ static void row_add_request(struct request_queue *q,
 
 		rqueue->idle_data.last_insert_time = ktime_get();
 	}
-	row_log_rowq(rd, rqueue->prio, "added request");
+	if (urgent_queues[rqueue->prio] &&
+	    row_rowq_unserved(rd, rqueue->prio)) {
+		row_log_rowq(rd, rqueue->prio,
+			"added urgent request (total on queue=%d)",
+			rqueue->nr_req);
+	} else
+		row_log_rowq(rd, rqueue->prio,
+			"added request (total on queue=%d)", rqueue->nr_req);
 }
 
-/*
+/**
+ * row_reinsert_req() - Reinsert request back to the scheduler
+ * @q:	requests queue
+ * @rq:	request to add
+ *
+ * Reinsert the given request back to the queue it was
+ * dispatched from as if it was never dispatched.
+ *
+ * Returns 0 on success, error code otherwise
+ */
+static int row_reinsert_req(struct request_queue *q,
+			    struct request *rq)
+{
+	struct row_data    *rd = q->elevator->elevator_data;
+	struct row_queue   *rqueue = RQ_ROWQ(rq);
+
+	/* Verify rqueue is legitimate */
+	if (rqueue->prio >= ROWQ_MAX_PRIO) {
+		pr_err("\n\nROW BUG: row_reinsert_req() rqueue->prio = %d\n",
+			   rqueue->prio);
+		blk_dump_rq_flags(rq, "");
+		return -EIO;
+	}
+
+	list_add(&rq->queuelist, &rqueue->fifo);
+	rd->nr_reqs[rq_data_dir(rq)]++;
+	rqueue->nr_req++;
+
+	row_log_rowq(rd, rqueue->prio,
+		"request reinserted (total on queue=%d)", rqueue->nr_req);
+
+	return 0;
+}
+
+/**
+ * row_urgent_pending() - Return TRUE if there is an urgent
+ *			  request on scheduler
+ * @q:	requests queue
+ */
+static bool row_urgent_pending(struct request_queue *q)
+{
+	struct row_data *rd = q->elevator->elevator_data;
+	int i;
+
+	for (i = 0; i < ROWQ_MAX_PRIO; i++)
+		if (urgent_queues[i] && row_rowq_unserved(rd, i) &&
+		    !list_empty(&rd->row_queues[i].rqueue.fifo)) {
+			row_log_rowq(rd, i,
+				     "Urgent request pending (curr=%i)",
+				     rd->curr_queue);
+			return true;
+		}
+
+	return false;
+}
+
+/**
  * row_remove_request() -  Remove given request from scheduler
  * @q:	requests queue
  * @rq:	request to remove
@@ -284,8 +376,10 @@ static void row_remove_request(struct request_queue *q,
 			       struct request *rq)
 {
 	struct row_data *rd = (struct row_data *)q->elevator->elevator_data;
+	struct row_queue *rqueue = RQ_ROWQ(rq);
 
 	rq_fifo_clear(rq);
+	rqueue->nr_req--;
 	rd->nr_reqs[rq_data_dir(rq)]--;
 }
 
@@ -367,7 +461,8 @@ static int row_dispatch_requests(struct request_queue *q, int force)
 		if (row_rowq_unserved(rd, i) &&
 		    !list_empty(&rd->row_queues[i].rqueue.fifo)) {
 			row_log_rowq(rd, currq,
-				" Preemting for unserved rowq%d", i);
+				" Preemting for unserved rowq%d. (nr_req=%u)",
+				i, rd->row_queues[currq].rqueue.nr_req);
 			rd->curr_queue = i;
 			row_dispatch_insert(rd);
 			ret = 1;
@@ -512,6 +607,7 @@ static void row_merged_requests(struct request_queue *q, struct request *rq,
 	struct row_queue   *rqueue = RQ_ROWQ(next);
 
 	list_del_init(&next->queuelist);
+	rqueue->nr_req--;
 
 	rqueue->rdata->nr_reqs[rq_data_dir(rq)]--;
 }
@@ -664,6 +760,8 @@ static struct elevator_type iosched_row = {
 		.elevator_merge_req_fn		= row_merged_requests,
 		.elevator_dispatch_fn		= row_dispatch_requests,
 		.elevator_add_req_fn		= row_add_request,
+		.elevator_reinsert_req_fn	= row_reinsert_req,
+		.elevator_is_urgent_fn		= row_urgent_pending,
 		.elevator_former_req_fn		= elv_rb_former_request,
 		.elevator_latter_req_fn		= elv_rb_latter_request,
 		.elevator_set_req_fn		= row_set_request,
@@ -692,4 +790,3 @@ module_exit(row_exit);
 
 MODULE_LICENSE("GPLv2");
 MODULE_DESCRIPTION("Read Over Write IO scheduler");
-
