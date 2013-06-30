@@ -1452,10 +1452,10 @@ static void do_dbs_timer(struct work_struct *work)
 			if (!active_state)
 			{
 				/* set freq to 1.5GHz */
-				pr_info("LMF: CPU0 set max freq to: %lu\n", lmf_active_max_limit);
+				//pr_info("LMF: CPU0 set max freq to: %lu\n", lmf_active_max_limit);
 				cpufreq_set_limits(BOOT_CPU, SET_MAX, lmf_active_max_limit);
 				
-				pr_info("LMF: CPU1 set max freq to: %lu\n", lmf_active_max_limit);
+				//pr_info("LMF: CPU1 set max freq to: %lu\n", lmf_active_max_limit);
 				if (cpu_online(NON_BOOT_CPU))
 					cpufreq_set_limits(NON_BOOT_CPU, SET_MAX, lmf_active_max_limit);
 				else
@@ -1566,10 +1566,10 @@ static void do_dbs_timer(struct work_struct *work)
 									cpu_up(1);
 #endif
 								/* set freq to 1.0GHz */
-								pr_info("LMF: CPU0 set max freq to: %lu\n", lmf_inactive_max_limit);
+								//pr_info("LMF: CPU0 set max freq to: %lu\n", lmf_inactive_max_limit);
 								cpufreq_set_limits(BOOT_CPU, SET_MAX, lmf_inactive_max_limit);
 								
-								pr_info("LMF: CPU1 set max freq to: %lu\n", lmf_inactive_max_limit);
+								//pr_info("LMF: CPU1 set max freq to: %lu\n", lmf_inactive_max_limit);
 								if (cpu_online(NON_BOOT_CPU))
 									cpufreq_set_limits(NON_BOOT_CPU, SET_MAX, lmf_inactive_max_limit);
 								else
@@ -1612,10 +1612,10 @@ static void do_dbs_timer(struct work_struct *work)
 								active_state = true;
 
 								/* set freq to 1.5GHz */
-								pr_info("LMF: CPU0 set max freq to: %lu\n", lmf_active_max_limit);
+								//pr_info("LMF: CPU0 set max freq to: %lu\n", lmf_active_max_limit);
 								cpufreq_set_limits(BOOT_CPU, SET_MAX, lmf_active_max_limit);
 								
-								pr_info("LMF: CPU1 set max freq to: %lu\n", lmf_active_max_limit);
+								//pr_info("LMF: CPU1 set max freq to: %lu\n", lmf_active_max_limit);
 								if (cpu_online(NON_BOOT_CPU))
 									cpufreq_set_limits(NON_BOOT_CPU, SET_MAX, lmf_active_max_limit);
 								else

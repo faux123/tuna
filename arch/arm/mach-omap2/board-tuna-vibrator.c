@@ -163,7 +163,7 @@ static void vibrator_enable(struct timed_output_dev *dev, int value)
 	hrtimer_cancel(&vibdata.timer);
 
 	if (value) {
-		pr_info("vibrator: value=%d, pwmval=%lu\n", value, pwmval);
+//		pr_info("vibrator: value=%d, pwmval=%lu\n", value, pwmval);
 		wake_lock(&vibdata.wklock);
 		vibrator_timer_init();
 		gpio_set_value(vibdata.gpio_en, 1);
