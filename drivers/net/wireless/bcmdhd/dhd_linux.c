@@ -543,8 +543,10 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 	int bcn_li_dtim = 3;
 	uint roamvar = 1;
 
+#if !defined(SUPPORT_PM2_ONLY)
 	if (wifi_fast)
 		power_mode = PM_FAST;
+#endif
 
 	DHD_TRACE(("%s: enter, value = %d in_suspend=%d\n",
 		__FUNCTION__, value, dhd->in_suspend));
