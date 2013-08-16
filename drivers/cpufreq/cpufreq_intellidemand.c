@@ -1240,6 +1240,9 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 	}
 }
 
+bool lmf_screen_state = true;
+bool lmf_browsing_state = true;
+
 #ifdef CONFIG_CPUFREQ_LIMIT_MAX_FREQ
 
 enum {	
@@ -1262,9 +1265,6 @@ enum {
 
 #define NUM_ACTIVE_LOAD_ARRAY	(ACTIVE_DURATION_MSEC/SAMPLE_DURATION_MSEC)
 #define NUM_INACTIVE_LOAD_ARRAY	(INACTIVE_DURATION_MSEC/SAMPLE_DURATION_MSEC)
-
-bool lmf_browsing_state = true;
-bool lmf_screen_state = true;
 
 static unsigned long lmf_active_max_limit = ACTIVE_MAX_FREQ;
 static unsigned long lmf_inactive_max_limit = INACTIVE_MAX_FREQ;
@@ -1387,7 +1387,7 @@ static void do_dbs_timer(struct work_struct *work)
 	//pr_info("run stats: %u\n", nr_run_stat);
 
 #if 1
-	if (cpu == BOOT_CPU && lmf_screen_state) {
+	if (cpu == 0 && lmf_screen_state) {
 		switch (nr_run_stat) {
 			case 1:
 				if (persist_count > 0)
