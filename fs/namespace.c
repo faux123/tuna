@@ -2030,6 +2030,13 @@ static int do_new_mount(struct path *path, char *type, int flags,
 	err = do_add_mount(mnt, path, mnt_flags);
 	if (err)
 		mntput(mnt);
+#ifdef CONFIG_ASYNC_FSYNC
+	if (!err && ((!strcmp(type, "ext4") &&
+	    !strcmp(path->dentry->d_name.name, "data")) ||
+	    (!strcmp(type, "fuse") &&
+	    !strcmp(path->dentry->d_name.name, "emulated"))))
+                mnt->mnt_sb->fsync_flags |= FLAG_ASYNC_FSYNC;
+#endif
 	return err;
 }
 
