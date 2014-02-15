@@ -174,16 +174,17 @@ static struct dbs_tuners {
 	.up_threshold_multi_core = DEF_FREQUENCY_UP_THRESHOLD,
 	.up_threshold = DEF_FREQUENCY_UP_THRESHOLD,
 	.sampling_down_factor = DEF_SAMPLING_DOWN_FACTOR,
-	.down_differential = DEF_FREQUENCY_DOWN_DIFFERENTIAL,
-	.down_differential_multi_core = MICRO_FREQUENCY_DOWN_DIFFERENTIAL,
-	.up_threshold_any_cpu_load = DEF_FREQUENCY_UP_THRESHOLD,
+	.down_differential = 85,
+	.down_differential_multi_core = 80,
+	.up_threshold_any_cpu_load = 95,
 	.ignore_nice = 0,
 	.powersave_bias = 0,
 	.sync_freq = DBS_SYNC_FREQ,
 	.optimal_freq = DBS_OPTIMAL_FREQ,
 	.freq_boost_time = DEFAULT_FREQ_BOOST_TIME,
+	.boostfreq = 1026000,
 #ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_2_PHASE
-	.two_phase_freq = 0,
+	.two_phase_freq = 1200000,
 #endif
 };
 
@@ -1342,10 +1343,10 @@ unsigned long get_lmf_inactive_load(void)
 #define NR_FSHIFT	1
 static unsigned int nr_run_thresholds[] = {
 /* 	1,  2 - on-line cpus target */
-	7,  UINT_MAX /* avg run threads * 2 (e.g., 9 = 2.25 threads) */
+	5,  UINT_MAX /* avg run threads * 2 (e.g., 9 = 2.25 threads) */
 	};
 
-static unsigned int nr_run_hysteresis = 8;  /* 0.5 thread */
+static unsigned int nr_run_hysteresis = 4;  /* 0.5 thread */
 static unsigned int nr_run_last;
 
 static unsigned int calculate_thread_stats (void)
