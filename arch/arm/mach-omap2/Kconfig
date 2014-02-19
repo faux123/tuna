@@ -471,4 +471,10 @@ config RQ_STATS
 	  Select this to enable scheduler rune queue statistic
 	  collections
 
+config INTELLI_PLUG
+	bool "Enable intelli-plug cpu hotplug driver"
+	default n
+	help
+	  Generic Intelli-plug cpu hotplug driver for ARM SOCs
+
 endif
