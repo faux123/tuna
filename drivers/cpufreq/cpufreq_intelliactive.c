@@ -1269,7 +1269,7 @@ static void interactive_input_event(struct input_handle *handle,
 static int input_dev_filter(const char *input_dev_name)
 {
 	if (strstr(input_dev_name, "touchscreen") ||
-	    strstr(input_dev_name, "Atmel maXTouch Touchscreen") ||
+	    strstr(input_dev_name, "Melfas MMSxxx Touchscreen") ||
 	    strstr(input_dev_name, "touch_dev") ||
 	    strstr(input_dev_name, "sec-touchscreen") ||
 	    strstr(input_dev_name, "keypad")) {
