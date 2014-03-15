@@ -49,9 +49,9 @@ static ssize_t soundcontrol_version(struct device * dev, struct device_attribute
     return sprintf(buf, "%d\n", SOUNDCONTROL_VERSION);
 }
 
-static DEVICE_ATTR(volume_boost, 0777, volume_boost_show, volume_boost_store);
+static DEVICE_ATTR(volume_boost, 0666, volume_boost_show, volume_boost_store);
 
-static DEVICE_ATTR(version, 0777 , soundcontrol_version, NULL);
+static DEVICE_ATTR(version, 0666 , soundcontrol_version, NULL);
 
 static struct attribute *soundcontrol_attributes[] = 
 {
