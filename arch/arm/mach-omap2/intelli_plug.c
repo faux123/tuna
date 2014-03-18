@@ -33,8 +33,11 @@
 #define BUSY_SAMPLING_MS		(250)
 
 #define DUAL_CORE_PERSISTENCE		14
+
+#ifndef CONFIG_INTELLI_PLUG_DUAL
 #define TRI_CORE_PERSISTENCE		10
 #define QUAD_CORE_PERSISTENCE		6
+#endif
 
 #define BUSY_PERSISTENCE		20
 
@@ -53,13 +56,17 @@ static struct workqueue_struct *intelliplug_boost_wq;
 static unsigned int intelli_plug_active = 1;
 module_param(intelli_plug_active, uint, 0644);
 
-static unsigned int eco_mode_active = 1;
+#ifndef CONFIG_INTELLI_PLUG_DUAL
+static unsigned int eco_mode_active = 0;
 module_param(eco_mode_active, uint, 0644);
+#endif
 
 static unsigned int sampling_time = 0;
 
 static unsigned int persist_count = 0;
+#ifndef CONFIG_INTELLI_PLUG_DUAL
 static unsigned int busy_persist_count = 0;
+#endif
 
 static bool suspended = false;
 
@@ -67,10 +74,12 @@ static bool suspended = false;
 static unsigned int nr_fshift = NR_FSHIFT;
 module_param(nr_fshift, uint, 0644);
 
+#ifndef CONFIG_INTELLI_PLUG_DUAL
 static unsigned int nr_run_thresholds_full[] = {
 /* 	1,  2,  3,  4 - on-line cpus target */
 	5,  7,  9,  UINT_MAX /* avg run threads * 2 (e.g., 9 = 2.25 threads) */
 	};
+#endif
 
 static unsigned int nr_run_thresholds_eco[] = {
 /*      1,  2, - on-line cpus target */
@@ -138,6 +147,14 @@ static unsigned int calculate_thread_stats(void)
 	unsigned int nr_run;
 	unsigned int threshold_size;
 
+#ifdef CONFIG_INTELLI_PLUG_DUAL
+	threshold_size =  ARRAY_SIZE(nr_run_thresholds_eco);
+	nr_run_hysteresis = 4;
+	nr_fshift = 1;
+#ifdef DEBUG_INTELLI_PLUG
+	pr_info("intelliplug: eco mode active!");
+#endif
+#else
 	if (!eco_mode_active) {
 		threshold_size =  ARRAY_SIZE(nr_run_thresholds_full);
 		nr_run_hysteresis = 8;
@@ -154,14 +171,18 @@ static unsigned int calculate_thread_stats(void)
 		pr_info("intelliplug: eco mode active!");
 #endif
 	}
+#endif
 
 	for (nr_run = 1; nr_run < threshold_size; nr_run++) {
 		unsigned int nr_threshold;
+#ifdef CONFIG_INTELLI_PLUG_DUAL
+		nr_threshold = nr_run_thresholds_eco[nr_run - 1];
+#else
 		if (!eco_mode_active)
 			nr_threshold = nr_run_thresholds_full[nr_run - 1];
 		else
 			nr_threshold = nr_run_thresholds_eco[nr_run - 1];
-
+#endif
 		if (nr_run_last <= nr_run)
 			nr_threshold += nr_run_hysteresis;
 		if (avg_nr_run <= (nr_threshold << (FSHIFT - nr_fshift)))
@@ -181,6 +202,65 @@ static void __cpuinit intelli_plug_boost_fn(struct work_struct *work)
 		cpu_up(1);
 }
 
+#ifdef CONFIG_INTELLI_PLUG_DUAL
+static void __cpuinit intelli_plug_work_fn(struct work_struct *work)
+{
+	unsigned int nr_run_stat;
+	unsigned int cpu_count = 0;
+	unsigned int nr_cpus = 0;
+
+	int decision = 0;
+	int i;
+
+	if (intelli_plug_active == 1) {
+		nr_run_stat = calculate_thread_stats();
+#ifdef DEBUG_INTELLI_PLUG
+		pr_info("nr_run_stat: %u\n", nr_run_stat);
+#endif
+		cpu_count = nr_run_stat;
+		// detect artificial loads or constant loads
+		// using msm rqstats
+		nr_cpus = num_online_cpus();
+		if (nr_cpus >= 1)
+			decision = mp_decision();
+
+		if (!suspended) {
+			switch (cpu_count) {
+			case 1:
+				if (persist_count > 0)
+					persist_count--;
+				if (persist_count == 0)
+					cpu_down(1);
+#ifdef DEBUG_INTELLI_PLUG
+				pr_info("case 1: %u\n", persist_count);
+#endif
+				break;
+			case 2:
+				persist_count = DUAL_CORE_PERSISTENCE;
+				if (!decision)
+					persist_count = DUAL_CORE_PERSISTENCE / CPU_DOWN_FACTOR;
+				if (nr_cpus < 2) {
+					for (i = 1; i < cpu_count; i++)
+						cpu_up(i);
+				}
+#ifdef DEBUG_INTELLI_PLUG
+				pr_info("case 2: %u\n", persist_count);
+#endif
+				break;
+			default:
+				pr_err("Run Stat Error: Bad value %u\n", nr_run_stat);
+				break;
+			}
+		}
+#ifdef DEBUG_INTELLI_PLUG
+		else
+			pr_info("intelli_plug is suspened!\n");
+#endif
+	}
+	queue_delayed_work_on(0, intelliplug_wq, &intelli_plug_work,
+		msecs_to_jiffies(sampling_time));
+}
+#else
 static void __cpuinit intelli_plug_work_fn(struct work_struct *work)
 {
 	unsigned int nr_run_stat;
@@ -299,6 +379,7 @@ static void __cpuinit intelli_plug_work_fn(struct work_struct *work)
 	queue_delayed_work_on(0, intelliplug_wq, &intelli_plug_work,
 		msecs_to_jiffies(sampling_time));
 }
+#endif
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void intelli_plug_early_suspend(struct early_suspend *handler)
@@ -330,11 +411,14 @@ static void __cpuinit intelli_plug_late_resume(struct early_suspend *handler)
 	mutex_unlock(&intelli_plug_mutex);
 
 	/* wake up everyone */
+#ifdef CONFIG_INTELLI_PLUG_DUAL
+	num_of_active_cores = num_possible_cpus();
+#else
 	if (eco_mode_active)
 		num_of_active_cores = 2;
 	else
 		num_of_active_cores = num_possible_cpus();
-
+#endif
 	for (i = 1; i < num_of_active_cores; i++) {
 		cpu_up(i);
 	}
