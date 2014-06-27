@@ -332,4 +332,3 @@ obj-$(CONFIG_SEC_MODEM)			+= board-tuna-modems.o
 obj-$(CONFIG_ARCH_OMAP4)		+= omap_dmm.o
 obj-$(CONFIG_OMAP_FIQ_DEBUGGER)		+= omap_fiq_debugger.o
 obj-$(CONFIG_RQ_STATS)			+= rq_stats.o
-obj-$(CONFIG_INTELLI_PLUG) += intelli_plug.o
